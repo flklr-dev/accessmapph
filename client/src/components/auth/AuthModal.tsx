@@ -18,7 +18,7 @@ import { Modal } from '../ui/Modal'
 import { Field } from '../ui/Field'
 import { Button } from '../ui/Button'
 import { GoogleIcon } from './GoogleIcon'
-import { LegalDocModal, LegalLinks, type LegalDoc } from './LegalDocs'
+import { LegalLinks } from './LegalDocs'
 import { cn } from '../../lib/utils'
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -107,7 +107,6 @@ export function AuthModal() {
   const [info, setInfo] = useState<string | null>(null)
   const [showVerifyPanel, setShowVerifyPanel] = useState(false)
   const [agreedToTerms, setAgreedToTerms] = useState(false)
-  const [legalDoc, setLegalDoc] = useState<LegalDoc | null>(null)
 
   const isBusy = pending !== null
   const isEmailPending = pending === 'email'
@@ -140,7 +139,6 @@ export function AuthModal() {
     setPassword('')
     setDisplayName('')
     setAgreedToTerms(false)
-    setLegalDoc(null)
     setShowVerifyPanel(needsEmailVerification(firebaseUser))
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally only on open
   }, [isOpen])
@@ -303,7 +301,6 @@ export function AuthModal() {
       : 'Create account'
 
   return (
-    <>
     <Modal open={isOpen} onClose={handleClose} title={title}>
       {!isFirebaseConfigured() ? (
         <p className="text-[15px] text-ink-muted m-0 leading-relaxed">
@@ -403,41 +400,6 @@ export function AuthModal() {
           )}
 
           <div className="flex flex-col gap-6">
-            <button
-              type="button"
-              onClick={handleGoogle}
-              disabled={isBusy}
-              aria-busy={isGooglePending || undefined}
-              className={cn(
-                'w-full inline-flex items-center justify-center gap-3 min-h-11 px-4',
-                'rounded-md border border-[#dadce0] bg-white',
-                'text-[15px] font-medium text-[#3c4043]',
-                'hover:bg-[#f8f9fa] hover:border-[#d2d3d4] hover:shadow-[0_1px_2px_rgba(60,64,67,0.15)]',
-                'focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2',
-                'active:bg-[#f1f3f4]',
-                'disabled:opacity-45 disabled:cursor-not-allowed disabled:pointer-events-none',
-                'cursor-pointer transition-[background-color,box-shadow,border-color] duration-150',
-              )}
-            >
-              {isGooglePending ? (
-                <Loader2 size={18} className="animate-spin text-[#5f6368]" aria-hidden="true" />
-              ) : (
-                <GoogleIcon size={18} />
-              )}
-              {isGooglePending ? 'Connecting to Google…' : 'Continue with Google'}
-            </button>
-
-            <p className="text-[12px] leading-relaxed text-ink-muted m-0 text-center -mt-3">
-              By continuing with Google, you agree to our{' '}
-              <LegalLinks onOpen={setLegalDoc} />.
-            </p>
-
-            <div className="flex items-center gap-3" role="separator" aria-label="or email">
-              <span className="flex-1 h-px bg-border" />
-              <span className="text-xs font-medium text-ink-muted shrink-0">or email</span>
-              <span className="flex-1 h-px bg-border" />
-            </div>
-
             <form onSubmit={handleSubmit} className="flex flex-col gap-4" noValidate>
               {mode === 'signup' && (
                 <Field
@@ -505,15 +467,7 @@ export function AuthModal() {
 
               {mode === 'signup' ? (
                 <div className="flex flex-col gap-1.5">
-                  <label
-                    htmlFor="auth-terms"
-                    className={cn(
-                      'flex items-start gap-2.5 cursor-pointer rounded-md border px-3 py-2.5 transition-colors',
-                      fieldErrors.terms
-                        ? 'border-red-500 bg-red-50'
-                        : 'border-border bg-surface-1',
-                    )}
-                  >
+                  <label htmlFor="auth-terms" className="flex items-start gap-2.5 cursor-pointer">
                     <input
                       id="auth-terms"
                       type="checkbox"
@@ -528,9 +482,14 @@ export function AuthModal() {
                       className="mt-0.5 w-4 h-4 accent-primary cursor-pointer shrink-0"
                       aria-invalid={fieldErrors.terms ? true : undefined}
                     />
-                    <span className="text-[13px] leading-relaxed text-ink">
-                      I agree to the <LegalLinks onOpen={setLegalDoc} /> and consent to the
-                      processing of my data as described.
+                    <span
+                      className={cn(
+                        'text-[13px] leading-relaxed',
+                        fieldErrors.terms ? 'text-red-500' : 'text-ink',
+                      )}
+                    >
+                      I agree to the <LegalLinks /> and consent to the processing of my data as
+                      described.
                     </span>
                   </label>
                   {fieldErrors.terms && (
@@ -539,11 +498,7 @@ export function AuthModal() {
                     </p>
                   )}
                 </div>
-              ) : (
-                <p className="text-[12px] leading-relaxed text-ink-muted m-0">
-                  By signing in, you agree to our <LegalLinks onOpen={setLegalDoc} />.
-                </p>
-              )}
+              ) : null}
 
               {formError && (
                 <p
@@ -566,7 +521,7 @@ export function AuthModal() {
                 type="submit"
                 variant="primary"
                 className="w-full mt-1"
-                disabled={isBusy}
+                disabled={isBusy || (mode === 'signup' && !agreedToTerms)}
                 aria-busy={isEmailPending || undefined}
               >
                 {isEmailPending ? (
@@ -581,6 +536,36 @@ export function AuthModal() {
                 )}
               </Button>
             </form>
+
+            <div className="flex items-center gap-3" role="separator" aria-label="or">
+              <span className="flex-1 h-px bg-border" />
+              <span className="text-xs font-medium text-ink-muted shrink-0">or</span>
+              <span className="flex-1 h-px bg-border" />
+            </div>
+
+            <button
+              type="button"
+              onClick={handleGoogle}
+              disabled={isBusy}
+              aria-busy={isGooglePending || undefined}
+              className={cn(
+                'w-full inline-flex items-center justify-center gap-3 min-h-11 px-4',
+                'rounded-md border border-[#dadce0] bg-white',
+                'text-[15px] font-medium text-[#3c4043]',
+                'hover:bg-[#f8f9fa] hover:border-[#d2d3d4] hover:shadow-[0_1px_2px_rgba(60,64,67,0.15)]',
+                'focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2',
+                'active:bg-[#f1f3f4]',
+                'disabled:opacity-45 disabled:cursor-not-allowed disabled:pointer-events-none',
+                'cursor-pointer transition-[background-color,box-shadow,border-color] duration-150',
+              )}
+            >
+              {isGooglePending ? (
+                <Loader2 size={18} className="animate-spin text-[#5f6368]" aria-hidden="true" />
+              ) : (
+                <GoogleIcon size={18} />
+              )}
+              {isGooglePending ? 'Connecting to Google…' : 'Continue with Google'}
+            </button>
 
             <p className="text-sm text-ink-muted m-0 text-center leading-relaxed pt-1">
               {mode === 'signin' ? (
@@ -613,8 +598,5 @@ export function AuthModal() {
         </div>
       )}
     </Modal>
-
-    <LegalDocModal doc={legalDoc} onClose={() => setLegalDoc(null)} />
-    </>
   )
 }
