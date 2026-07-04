@@ -7,6 +7,8 @@ import {
   searchLocationsByName,
 } from '../services/locationService.js'
 import { searchPlaces } from '../lib/nominatim.js'
+import { requireAuth, requireVerifiedEmail, type AuthenticatedRequest } from '../middleware/auth.js'
+import { locationCreateRateLimit } from '../middleware/rateLimit.js'
 
 export const locationsRouter = Router()
 
@@ -78,41 +80,54 @@ locationsRouter.post('/resolve', async (req, res) => {
   }
 })
 
-locationsRouter.post('/', async (req, res) => {
-  const { lat, lng, name, address, city, category, placeKey, forceNew } = req.body ?? {}
+locationsRouter.post(
+  '/',
+  requireAuth,
+  requireVerifiedEmail,
+  locationCreateRateLimit,
+  async (req: AuthenticatedRequest, res) => {
+    const { lat, lng, name, address, city, category, placeKey, forceNew } = req.body ?? {}
 
-  if (typeof lat !== 'number' || typeof lng !== 'number') {
-    res.status(400).json({ error: 'lat and lng are required numbers.' })
-    return
-  }
-  if (typeof name !== 'string') {
-    res.status(400).json({ error: 'name is required.' })
-    return
-  }
-
-  try {
-    const result = await createLocation({
-      lat,
-      lng,
-      name,
-      address: typeof address === 'string' ? address : undefined,
-      city: typeof city === 'string' ? city : undefined,
-      category: typeof category === 'string' ? category : undefined,
-      placeKey: typeof placeKey === 'string' ? placeKey : null,
-      forceNew: forceNew === true,
-    })
-
-    if (result.error) {
-      res.status(result.conflict ? 409 : 400).json({
-        error: result.error,
-        conflict: result.conflict,
-      })
+    if (typeof lat !== 'number' || typeof lng !== 'number') {
+      res.status(400).json({ error: 'lat and lng are required numbers.' })
+      return
+    }
+    if (typeof name !== 'string') {
+      res.status(400).json({ error: 'name is required.' })
       return
     }
 
-    res.status(201).json({ location: result.location })
-  } catch (error) {
-    console.error('Error creating location:', error)
-    res.status(500).json({ error: 'Failed to create location.' })
-  }
-})
+    const createdBy = req.auth?.uid
+    if (!createdBy) {
+      res.status(401).json({ error: 'Sign in required.' })
+      return
+    }
+
+    try {
+      const result = await createLocation({
+        lat,
+        lng,
+        name,
+        address: typeof address === 'string' ? address : undefined,
+        city: typeof city === 'string' ? city : undefined,
+        category: typeof category === 'string' ? category : undefined,
+        placeKey: typeof placeKey === 'string' ? placeKey : null,
+        forceNew: forceNew === true,
+        createdBy,
+      })
+
+      if (result.error) {
+        res.status(result.conflict ? 409 : 400).json({
+          error: result.error,
+          conflict: result.conflict,
+        })
+        return
+      }
+
+      res.status(201).json({ location: result.location })
+    } catch (error) {
+      console.error('Error creating location:', error)
+      res.status(500).json({ error: 'Failed to create location.' })
+    }
+  },
+)

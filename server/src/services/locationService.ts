@@ -36,6 +36,7 @@ export interface CreateLocationInput {
   category?: string
   placeKey?: string | null
   forceNew?: boolean
+  createdBy?: string
 }
 
 function toPublicLocation(doc: ILocation) {
@@ -56,9 +57,11 @@ export async function getAllLocations() {
       geohash: loc.geohash,
       placeKey: loc.placeKey,
       source: loc.source,
+      createdBy: loc.createdBy ?? null,
       reports: loc.reports.map((r) => ({
         id: r._id.toString(),
         locationId: loc._id.toString(),
+        userId: r.userId,
         featureType: r.featureType,
         status: r.status,
         description: r.description,
@@ -233,6 +236,7 @@ export async function createLocation(input: CreateLocationInput): Promise<{
     geohash: encodeGeohash(lat, lng),
     placeKey: input.placeKey ?? null,
     source: 'community',
+    createdBy: input.createdBy ?? null,
     reports: [],
   })
 

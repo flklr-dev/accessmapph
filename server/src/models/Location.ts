@@ -8,6 +8,7 @@ export type LocationCategory = 'mall' | 'school' | 'government' | 'hospital' | '
 
 export interface IReport {
   _id: mongoose.Types.ObjectId
+  userId?: string
   featureType: FeatureType
   status: AccessibilityStatus
   description?: string
@@ -32,6 +33,7 @@ export interface ILocation extends Document {
   geohash: string
   placeKey: string | null
   source: LocationSource
+  createdBy?: string | null
   reports: IReport[]
   createdAt: Date
   updatedAt: Date
@@ -56,6 +58,7 @@ export interface LocationJSON {
 export interface ReportJSON {
   id: string
   locationId: string
+  userId?: string
   featureType: FeatureType
   status: AccessibilityStatus
   description?: string
@@ -69,6 +72,7 @@ export interface ReportJSON {
 
 const ReportSchema = new Schema<IReport>(
   {
+    userId: { type: String, index: true },
     featureType: {
       type: String,
       required: true,
@@ -128,6 +132,7 @@ const LocationSchema = new Schema<ILocation>(
       enum: ['seed', 'community'],
       default: 'community',
     },
+    createdBy: { type: String, default: null, index: true },
     reports: [ReportSchema],
   },
   {
@@ -150,6 +155,7 @@ const LocationSchema = new Schema<ILocation>(
           ret.reports = (ret.reports as Array<Record<string, unknown>>).map((r) => ({
             id: String(r._id),
             locationId: id,
+            userId: r.userId,
             featureType: r.featureType,
             status: r.status,
             description: r.description,

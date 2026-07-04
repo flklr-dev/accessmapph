@@ -1,5 +1,6 @@
 import { type FeatureType, type AccessibilityStatus, type AIVerdict } from '../models/Location.js'
 import { getLocationById, addReportToLocation } from './locationService.js'
+import { recordReportContribution } from './userService.js'
 
 const SPAM_PATTERNS = [
   /^(.)\1{6,}$/,
@@ -25,6 +26,7 @@ export interface ModerationResult {
 export interface ReportOutput {
   id: string
   locationId: string
+  userId?: string
   featureType: FeatureType
   status: AccessibilityStatus
   description?: string
@@ -39,15 +41,17 @@ function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-function isDuplicate(
-  reports: Array<{ featureType: string; createdAt?: string }>,
+function isDuplicateForUser(
+  reports: Array<{ featureType: string; userId?: string; createdAt?: string }>,
   featureType: string,
+  userId: string,
   withinHours = 24,
 ): boolean {
   const cutoff = Date.now() - withinHours * 60 * 60 * 1000
   return reports.some(
     (r) =>
       r.featureType === featureType &&
+      r.userId === userId &&
       r.createdAt &&
       new Date(r.createdAt).getTime() > cutoff,
   )
@@ -55,7 +59,8 @@ function isDuplicate(
 
 function moderateReport(
   body: SubmitReportBody,
-  existingReports: Array<{ featureType: string; createdAt?: string }>,
+  existingReports: Array<{ featureType: string; userId?: string; createdAt?: string }>,
+  userId: string,
 ): ModerationResult {
   const description = body.description?.trim() ?? ''
 
@@ -75,10 +80,10 @@ function moderateReport(
     }
   }
 
-  if (isDuplicate(existingReports, body.featureType)) {
+  if (isDuplicateForUser(existingReports, body.featureType, userId)) {
     return {
       valid: false,
-      reason: 'A similar report for this feature was submitted recently.',
+      reason: 'You already submitted a report for this feature recently.',
       confidence: 0.88,
     }
   }
@@ -124,6 +129,7 @@ export function validateSubmitBody(body: unknown): SubmitReportBody | string {
 
 export async function processReportSubmission(
   body: SubmitReportBody,
+  userId: string,
 ): Promise<{ report: ReportOutput; moderation: ModerationResult } | { error: string }> {
   await delay(MODERATION_DELAY_MS)
 
@@ -132,9 +138,10 @@ export async function processReportSubmission(
     return { error: 'Location not found.' }
   }
 
-  const moderation = moderateReport(body, location.reports ?? [])
+  const moderation = moderateReport(body, location.reports ?? [], userId)
 
   const reportData = {
+    userId,
     featureType: body.featureType,
     status: body.status as AccessibilityStatus,
     description: body.description || undefined,
@@ -148,6 +155,10 @@ export async function processReportSubmission(
 
   if (!updatedLocation) {
     return { error: 'Failed to add report.' }
+  }
+
+  if (moderation.valid) {
+    await recordReportContribution(userId)
   }
 
   const newReport = updatedLocation.reports[0]

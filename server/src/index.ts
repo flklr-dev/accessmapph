@@ -2,9 +2,11 @@ import 'dotenv/config'
 import express from 'express'
 import cors from 'cors'
 import { connectDB } from './lib/db.js'
+import { initFirebaseAdmin } from './lib/firebase.js'
 import { locationsRouter } from './routes/locations.js'
 import { healthRouter } from './routes/health.js'
 import { reportsRouter } from './routes/reports.js'
+import { authRouter } from './routes/auth.js'
 
 const app = express()
 const PORT = process.env.PORT ?? 3001
@@ -20,14 +22,16 @@ app.use(
     origin: allowedOrigins,
   }),
 )
-app.use(express.json())
+app.use(express.json({ limit: '32kb' }))
 
 app.use('/api/health', healthRouter)
+app.use('/api/auth', authRouter)
 app.use('/api/locations', locationsRouter)
 app.use('/api/reports', reportsRouter)
 
 async function start() {
   try {
+    initFirebaseAdmin()
     await connectDB()
     app.listen(PORT, () => {
       console.log(`AccessMap PH API running on http://localhost:${PORT}`)
