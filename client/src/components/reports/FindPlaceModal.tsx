@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Loader2, MapPin, Search, Globe } from 'lucide-react'
 import { searchPlaces } from '../../api/locations'
 import { useMapStore } from '../../store/mapStore'
+import { useAuthStore } from '../../store/authStore'
 import type { Location, PlaceSearchResult } from '../../types'
 import { Modal } from '../ui/Modal'
 import { cn } from '../../lib/utils'
@@ -21,6 +22,7 @@ export function FindPlaceModal() {
   const locations = useMapStore((s) => s.locations)
   const openExistingLocationConfirm = useMapStore((s) => s.openExistingLocationConfirm)
   const startReportFromSearch = useMapStore((s) => s.startReportFromSearch)
+  const requireAuth = useAuthStore((s) => s.requireAuth)
 
   const [query, setQuery] = useState('')
   const [loading, setLoading] = useState(false)
@@ -136,7 +138,12 @@ export function FindPlaceModal() {
               <li key={loc.id}>
                 <button
                   type="button"
-                  onClick={() => openExistingLocationConfirm(loc.id)}
+                  onClick={() =>
+                    requireAuth(
+                      () => openExistingLocationConfirm(loc.id),
+                      'Sign in to report at this location.',
+                    )
+                  }
                   className={cn(
                     'w-full text-left p-3 rounded-md border border-border bg-white',
                     'hover:border-primary hover:bg-blue-50/50 cursor-pointer transition-colors',
@@ -169,7 +176,12 @@ export function FindPlaceModal() {
               <li key={`${place.placeKey ?? place.name}-${index}`}>
                 <button
                   type="button"
-                  onClick={() => startReportFromSearch(place)}
+                  onClick={() =>
+                    requireAuth(
+                      () => startReportFromSearch(place),
+                      'Sign in to add and report this place.',
+                    )
+                  }
                   className={cn(
                     'w-full text-left p-3 rounded-md border border-border bg-white',
                     'hover:border-primary hover:bg-blue-50/50 cursor-pointer transition-colors',

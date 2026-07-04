@@ -1,4 +1,5 @@
 import type { SubmitReportInput, SubmitReportResponse } from '../types'
+import { apiFetch } from './http'
 
 const DESCRIPTION_MAX = 280
 
@@ -18,18 +19,11 @@ export async function submitReport(
   const validationError = validateReportInput(input)
   if (validationError) throw new Error(validationError)
 
-  const response = await fetch('/api/reports', {
+  return apiFetch<SubmitReportResponse>('/api/reports', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(input),
+    body: input,
+    auth: true,
   })
-
-  if (!response.ok) {
-    const body = await response.json().catch(() => ({}))
-    throw new Error(body.error ?? 'Failed to submit report.')
-  }
-
-  return response.json()
 }
 
 export { DESCRIPTION_MAX }

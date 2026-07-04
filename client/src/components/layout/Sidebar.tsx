@@ -14,7 +14,9 @@ import {
   Plus
 } from 'lucide-react'
 import { useMapStore } from '../../store/mapStore'
+import { useAuthStore } from '../../store/authStore'
 import { useFilteredLocations, useLocationStatus } from '../../hooks/useFilteredLocations'
+import { UserMenu } from '../auth/UserMenu'
 import { FEATURE_LABELS, DISABILITY_LABELS, type FeatureType, type DisabilityType, type LocationCategory } from '../../types'
 import { cn } from '../../lib/utils'
 
@@ -60,6 +62,7 @@ export function Sidebar() {
   const clearFilters = useMapStore((s) => s.clearFilters)
   const mapTap = useMapStore((s) => s.mapTap)
   const openPinModal = useMapStore((s) => s.openPinModal)
+  const requireAuth = useAuthStore((s) => s.requireAuth)
 
   const filteredLocations = useFilteredLocations()
   const getLocationStatus = useLocationStatus()
@@ -89,9 +92,10 @@ export function Sidebar() {
           )}>
             A
           </div>
-          <span className="font-display font-extrabold text-[15px] tracking-tight bg-gradient-to-r from-white to-[#E8E8E8]/70 bg-clip-text text-transparent">
+          <span className="font-display font-extrabold text-[15px] tracking-tight bg-gradient-to-r from-white to-[#E8E8E8]/70 bg-clip-text text-transparent flex-1">
             AccessMap PH
           </span>
+          <UserMenu variant="dark" />
         </div>
 
         {/* Command bar trigger input */}
@@ -118,7 +122,9 @@ export function Sidebar() {
           {mapTap && (
             <button
               type="button"
-              onClick={openPinModal}
+              onClick={() =>
+                requireAuth(openPinModal, 'Sign in to report at this spot.')
+              }
               className="w-full flex items-center gap-2.5 px-2 py-2 rounded-md text-xs font-semibold bg-primary/20 text-[#8E5FEB] hover:bg-primary/30 text-left border-0 cursor-pointer animate-pulse"
             >
               <Plus size={16} />

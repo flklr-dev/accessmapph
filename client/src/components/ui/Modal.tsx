@@ -8,9 +8,11 @@ interface ModalProps {
   title: string
   children: ReactNode
   className?: string
+  /** Stack above another open modal (e.g. legal docs over auth). */
+  elevated?: boolean
 }
 
-export function Modal({ open, onClose, title, children, className }: ModalProps) {
+export function Modal({ open, onClose, title, children, className, elevated = false }: ModalProps) {
   const titleId = useId()
   const dialogRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLElement | null>(null)
@@ -60,7 +62,10 @@ export function Modal({ open, onClose, title, children, className }: ModalProps)
 
   return (
     <div
-      className="fixed inset-0 z-modal grid place-items-center p-4 bg-black/40 backdrop-blur-xs"
+      className={cn(
+        'fixed inset-0 grid place-items-center p-4 bg-black/40 backdrop-blur-xs',
+        elevated ? 'z-modal-elevated' : 'z-modal',
+      )}
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose()
       }}

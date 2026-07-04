@@ -1,7 +1,7 @@
-import { SlidersHorizontal, User, Search } from 'lucide-react'
+import { SlidersHorizontal, Search } from 'lucide-react'
 import { useMapStore } from '../../store/mapStore'
 import { countActiveFilters } from '../../store/selectors'
-import { Button } from '../ui/Button'
+import { UserMenu } from '../auth/UserMenu'
 import { cn } from '../../lib/utils'
 
 export function Header() {
@@ -39,11 +39,10 @@ export function Header() {
         </span>
       </a>
 
-      {/* Spotlight Trigger */}
       <button
         type="button"
         onClick={() => setCommandPaletteOpen(true)}
-        className="flex-1 max-w-[160px] xs:max-w-xs flex items-center gap-2 px-3 py-1.5 text-left text-xs bg-surface-1 border border-border rounded-md text-ink-muted hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-primary min-h-[2.25rem] cursor-pointer"
+        className="flex-1 max-w-[160px] xs:max-w-xs flex items-center gap-2 px-3 py-1.5 text-left text-xs bg-surface-1 border border-border rounded-md text-ink-muted hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-primary min-h-9 cursor-pointer"
       >
         <Search size={13} className="text-gray-400 shrink-0" />
         <span className="truncate flex-1">Search {spaceNames[activeSpace]}...</span>
@@ -54,8 +53,8 @@ export function Header() {
           type="button"
           onClick={() => setShowMobileFilters(!showMobileFilters)}
           className={cn(
-            "relative inline-flex items-center justify-center w-10 h-10 rounded-md border border-border bg-white text-text-muted hover:bg-gray-50 hover:text-text cursor-pointer",
-            activeFilterCount > 0 && "border-primary"
+            'relative inline-flex items-center justify-center w-10 h-10 rounded-md border border-border bg-white text-text-muted hover:bg-gray-50 hover:text-text cursor-pointer',
+            activeFilterCount > 0 && 'border-primary',
           )}
           aria-label={`Filters${activeFilterCount > 0 ? `, ${activeFilterCount} active` : ''}`}
           aria-pressed={showMobileFilters}
@@ -68,11 +67,8 @@ export function Header() {
           )}
         </button>
 
-        <Button variant="secondary" size="sm" className="w-10 h-10 min-h-0 min-w-0 p-0" aria-label="Sign in (coming soon)" disabled>
-          <User size={16} aria-hidden="true" />
-        </Button>
+        <UserMenu variant="light" />
       </div>
     </header>
   )
 }
-

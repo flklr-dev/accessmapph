@@ -5,40 +5,28 @@ import type {
   ResolveLocationResponse,
 } from '../types'
 import { distanceMeters, MATCH_RADIUS_METERS } from '../lib/geo'
+import { apiFetch } from './http'
 
 export async function fetchLocations(): Promise<Location[]> {
-  const response = await fetch('/api/locations')
-  if (!response.ok) {
-    throw new Error('Failed to load locations.')
-  }
-  return response.json()
+  return apiFetch<Location[]>('/api/locations', { auth: false })
 }
 
 export async function searchPlaces(query: string): Promise<PlaceSearchResponse> {
-  const response = await fetch(`/api/locations/search?q=${encodeURIComponent(query)}&limit=6`)
-  if (!response.ok) {
-    const body = await response.json().catch(() => ({}))
-    throw new Error(body.error ?? 'Failed to search places.')
-  }
-  return response.json()
+  return apiFetch<PlaceSearchResponse>(
+    `/api/locations/search?q=${encodeURIComponent(query)}&limit=6`,
+    { auth: false },
+  )
 }
 
 export async function resolveLocationAt(
   lat: number,
   lng: number,
 ): Promise<ResolveLocationResponse> {
-  const response = await fetch('/api/locations/resolve', {
+  return apiFetch<ResolveLocationResponse>('/api/locations/resolve', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ lat, lng }),
+    body: { lat, lng },
+    auth: false,
   })
-
-  if (!response.ok) {
-    const body = await response.json().catch(() => ({}))
-    throw new Error(body.error ?? 'Failed to resolve location.')
-  }
-
-  return response.json()
 }
 
 /** Offline fallback — match against locally cached locations only */
@@ -89,19 +77,12 @@ export function resolveLocationLocally(
 export async function createLocation(
   input: CreateLocationInput,
 ): Promise<Location> {
-  const response = await fetch('/api/locations', {
+  const data = await apiFetch<{ location: Location }>('/api/locations', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(input),
+    body: input,
+    auth: true,
   })
-
-  const body = await response.json().catch(() => ({}))
-
-  if (!response.ok) {
-    throw new Error(body.error ?? 'Failed to create location.')
-  }
-
-  return body.location
+  return data.location
 }
 
 export async function resolveLocationWithFallback(

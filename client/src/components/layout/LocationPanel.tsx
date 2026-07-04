@@ -11,6 +11,7 @@ import {
   X,
 } from 'lucide-react'
 import { useMapStore } from '../../store/mapStore'
+import { useAuthStore } from '../../store/authStore'
 import { useFilteredLocations, useLocationStatus } from '../../hooks/useFilteredLocations'
 import type { AccessibilityStatus, Location, LocationCategory } from '../../types'
 import { FEATURE_LABELS } from '../../types'
@@ -183,6 +184,7 @@ function LocationDetail({
 }) {
   const getLocationStatus = useLocationStatus()
   const openReportModal = useMapStore((s) => s.openReportModal)
+  const requireAuth = useAuthStore((s) => s.requireAuth)
   const status = getLocationStatus(location)
   const { label: categoryLabel, Icon: CategoryIcon } = categoryConfig[location.category]
 
@@ -230,7 +232,12 @@ function LocationDetail({
       <Button
         variant="primary"
         className="w-full mb-6 py-2.5 shrink-0"
-        onClick={() => openReportModal(location.id)}
+        onClick={() =>
+          requireAuth(
+            () => openReportModal(location.id),
+            'Sign in to report accessibility.',
+          )
+        }
       >
         <Plus size={16} aria-hidden="true" />
         Report Accessibility

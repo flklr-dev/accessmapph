@@ -25,6 +25,7 @@ export type AIVerdict = 'approved' | 'flagged' | 'pending'
 export interface Report {
   id: string
   locationId: string
+  userId?: string
   featureType: FeatureType
   status: AccessibilityStatus
   description?: string
@@ -66,6 +67,7 @@ export interface Location {
   geohash?: string
   placeKey?: string | null
   source?: LocationSource
+  createdBy?: string | null
   reports: Report[]
 }
 

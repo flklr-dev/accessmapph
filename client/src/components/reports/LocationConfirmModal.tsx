@@ -1,5 +1,6 @@
 import { MapPin } from 'lucide-react'
 import { useMapStore } from '../../store/mapStore'
+import { useAuthStore } from '../../store/authStore'
 import { Modal } from '../ui/Modal'
 import { Button } from '../ui/Button'
 
@@ -10,14 +11,17 @@ export function LocationConfirmModal() {
   const closeLocationConfirm = useMapStore((s) => s.closeLocationConfirm)
   const openReportModal = useMapStore((s) => s.openReportModal)
   const setSelectedLocation = useMapStore((s) => s.setSelectedLocation)
+  const requireAuth = useAuthStore((s) => s.requireAuth)
 
   const location = locations.find((l) => l.id === confirmLocationId)
 
   if (!location) return null
 
   const handleConfirm = () => {
-    openReportModal(location.id)
-    closeLocationConfirm()
+    requireAuth(() => {
+      openReportModal(location.id)
+      closeLocationConfirm()
+    }, 'Sign in to report at this location.')
   }
 
   const handleViewOnly = () => {

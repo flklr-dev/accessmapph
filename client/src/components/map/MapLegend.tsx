@@ -17,7 +17,7 @@ const dotClass: Record<AccessibilityStatus, string> = {
 export function MapLegend() {
   return (
     <div
-      className="absolute bottom-6 left-6 z-[400] bg-canvas/90 backdrop-blur-xs border border-border rounded-md px-4 py-3 shadow-card hidden sm:block"
+      className="absolute bottom-6 left-6 z-map bg-canvas/90 backdrop-blur-xs border border-border rounded-md px-4 py-3 shadow-card hidden sm:block"
       aria-label="Map legend"
     >
       <p className="text-xs font-semibold uppercase tracking-wide text-text-muted m-0 mb-2">

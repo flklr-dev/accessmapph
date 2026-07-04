@@ -1,5 +1,6 @@
 import { MapPin, X } from 'lucide-react'
 import { useMapStore } from '../../store/mapStore'
+import { useAuthStore } from '../../store/authStore'
 import { Button } from '../ui/Button'
 
 export function MapTapBar() {
@@ -7,11 +8,12 @@ export function MapTapBar() {
   const isPinModalOpen = useMapStore((s) => s.isPinModalOpen)
   const openPinModal = useMapStore((s) => s.openPinModal)
   const clearMapTap = useMapStore((s) => s.clearMapTap)
+  const requireAuth = useAuthStore((s) => s.requireAuth)
 
   if (!mapTap || isPinModalOpen) return null
 
   return (
-    <div className="absolute bottom-20 md:bottom-6 left-1/2 -translate-x-1/2 z-[400] w-[calc(100%-2rem)] max-w-sm">
+    <div className="absolute bottom-20 md:bottom-6 left-1/2 -translate-x-1/2 z-map w-[calc(100%-2rem)] max-w-sm">
       <div className="flex items-center gap-3 px-4 py-3 bg-canvas/95 backdrop-blur-xs border border-border rounded-md shadow-elevated">
         <div className="flex items-center justify-center w-9 h-9 shrink-0 rounded-md bg-primary/10 text-primary">
           <MapPin size={18} aria-hidden="true" />
@@ -33,7 +35,12 @@ export function MapTapBar() {
           >
             <X size={16} aria-hidden="true" />
           </button>
-          <Button size="sm" onClick={openPinModal}>
+          <Button
+            size="sm"
+            onClick={() =>
+              requireAuth(openPinModal, 'Sign in to report at this spot.')
+            }
+          >
             Report here
           </Button>
         </div>
