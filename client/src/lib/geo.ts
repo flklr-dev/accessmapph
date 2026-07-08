@@ -3,6 +3,30 @@ export const MIN_SEPARATION_METERS = 15
 
 const EARTH_RADIUS_M = 6_371_000
 
+/**
+ * Cheap client-side pre-filter so we don't even round-trip to the server for
+ * obviously out-of-country taps (e.g. clicking the other side of the map).
+ * This is generous by design — it also covers some neighboring waters — the
+ * server does the authoritative check (bounding box + reverse-geocode
+ * country + ocean detection) in `server/src/lib/nominatim.ts`. Keep this box
+ * in sync with the server copy in `server/src/lib/geo.ts`.
+ */
+export const PH_BOUNDS = {
+  minLat: 4.5,
+  maxLat: 21.5,
+  minLng: 116.0,
+  maxLng: 127.0,
+}
+
+export function isWithinPhilippinesBounds(lat: number, lng: number): boolean {
+  return (
+    lat >= PH_BOUNDS.minLat &&
+    lat <= PH_BOUNDS.maxLat &&
+    lng >= PH_BOUNDS.minLng &&
+    lng <= PH_BOUNDS.maxLng
+  )
+}
+
 export function distanceMeters(
   a: { lat: number; lng: number },
   b: { lat: number; lng: number },

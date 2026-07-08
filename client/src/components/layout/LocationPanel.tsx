@@ -18,6 +18,7 @@ import { FEATURE_LABELS } from '../../types'
 import { StatusBadge } from '../ui/StatusBadge'
 import { Button } from '../ui/Button'
 import { EmptyState } from '../ui/EmptyState'
+import { ReportVoteBar } from '../reports/ReportVoteBar'
 
 const categoryConfig: Record<
   LocationCategory,
@@ -260,14 +261,37 @@ function LocationDetail({
                 key={report.id}
                 className="border border-border rounded-md p-4 bg-white shadow-card hover:shadow-md transition-shadow"
               >
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="w-6 h-6 rounded-full border border-border overflow-hidden shrink-0 bg-surface-1 flex items-center justify-center">
+                    {report.authorPhotoURL ? (
+                      <img
+                        src={report.authorPhotoURL}
+                        alt=""
+                        className="w-full h-full object-cover"
+                        referrerPolicy="no-referrer"
+                      />
+                    ) : (
+                      <span className="text-[10px] font-bold text-primary">
+                        {(report.authorName || 'C').slice(0, 1).toUpperCase()}
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-xs font-medium text-ink-muted truncate">
+                    {report.authorName || 'Contributor'}
+                  </span>
+                  <span className="text-[10px] text-gray-400 ml-auto shrink-0">
+                    {formatDate(report.createdAt)}
+                  </span>
+                </div>
+
                 <div className="flex items-start justify-between gap-2 mb-2">
                   <span className="text-xs font-semibold text-ink">
                     {FEATURE_LABELS[report.featureType]}
                   </span>
                   <div className="flex flex-wrap items-center gap-1 justify-end">
                     {report.aiVerdict === 'flagged' && (
-                      <span className="inline-flex items-center px-1.5 py-0.2 text-[9px] font-bold uppercase tracking-wider rounded-sm bg-yellow-50 text-yellow-600">
-                        Under review
+                      <span className="inline-flex items-center px-1.5 py-0.2 text-[9px] font-bold uppercase tracking-wider rounded-sm bg-red-50 text-red-500">
+                        Flagged
                       </span>
                     )}
                     <StatusBadge status={report.status} verified={report.verified} />
@@ -278,10 +302,27 @@ function LocationDetail({
                     {report.description}
                   </p>
                 )}
-                <p className="text-[10px] text-gray-400 m-0">
-                  Updated {formatDate(report.createdAt)}
-                  {report.upvotes > 0 && ` · ${report.upvotes} confirmations`}
-                </p>
+                {report.photos.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mb-2">
+                    {report.photos.map((url) => (
+                      <a
+                        key={url}
+                        href={url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="block w-14 h-14 rounded-sm overflow-hidden border border-border shrink-0"
+                      >
+                        <img
+                          src={url}
+                          alt="Reported condition"
+                          loading="lazy"
+                          className="w-full h-full object-cover"
+                        />
+                      </a>
+                    ))}
+                  </div>
+                )}
+                <ReportVoteBar locationId={location.id} report={report} />
               </li>
             ))}
           </ul>

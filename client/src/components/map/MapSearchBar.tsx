@@ -11,7 +11,7 @@ export function MapSearchBar() {
     <button
       type="button"
       onClick={() => setFindPlaceModalOpen(true)}
-      className="absolute top-3 left-1/2 -translate-x-1/2 z-map w-[calc(100%-1.5rem)] max-w-md flex items-center gap-2 px-3 py-2 min-h-11 bg-canvas/95 backdrop-blur-md border border-border rounded-md shadow-card hover:border-primary/35 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 cursor-pointer transition-[border-color,box-shadow] duration-220 ease-[cubic-bezier(0.16,1,0.3,1)]"
+      className="absolute top-3 left-14 right-3 sm:left-1/2 sm:right-auto sm:-translate-x-1/2 sm:w-[calc(100%-1.5rem)] sm:max-w-md z-map flex items-center gap-2 px-3 py-2 min-h-11 glass-panel-interactive rounded-md focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 cursor-pointer"
       aria-label="Search a place to report accessibility. You can also tap the map to pin a spot."
     >
       <Search size={15} className="text-ink-muted shrink-0" strokeWidth={2} aria-hidden="true" />

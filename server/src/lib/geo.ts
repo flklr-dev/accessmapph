@@ -4,6 +4,30 @@ export const STRONG_MATCH_RADIUS_METERS = 25
 export const MIN_SEPARATION_METERS = 15
 export const GEOHASH_PRECISION = 7
 
+/**
+ * Generous bounding box around the Philippine archipelago (Batanes to
+ * Tawi-Tawi, Palawan to Mindanao's east coast). This is a cheap first-pass
+ * filter only — it also covers parts of neighboring countries' waters, so it
+ * must always be paired with the reverse-geocode country check in
+ * `lib/nominatim.ts` before a location is accepted. Keep in sync with the
+ * client copy in `client/src/lib/geo.ts`.
+ */
+export const PH_BOUNDS = {
+  minLat: 4.5,
+  maxLat: 21.5,
+  minLng: 116.0,
+  maxLng: 127.0,
+}
+
+export function isWithinPhilippinesBounds(lat: number, lng: number): boolean {
+  return (
+    lat >= PH_BOUNDS.minLat &&
+    lat <= PH_BOUNDS.maxLat &&
+    lng >= PH_BOUNDS.minLng &&
+    lng <= PH_BOUNDS.maxLng
+  )
+}
+
 const EARTH_RADIUS_M = 6_371_000
 
 export interface GeoPoint {

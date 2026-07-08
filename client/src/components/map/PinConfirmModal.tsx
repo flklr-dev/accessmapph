@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Loader2, MapPin, AlertCircle } from 'lucide-react'
+import { Loader2, MapPin, AlertCircle, Waves } from 'lucide-react'
 import {
   createLocation,
   resolveLocationWithFallback,
@@ -129,7 +129,7 @@ export function PinConfirmModal() {
 
   return (
     <Modal open={isOpen && mapTap !== null} onClose={handleClose} title="Confirm location">
-      {locationConfirmPrefill && !loading && (
+      {locationConfirmPrefill && !loading && resolveResult?.action !== 'invalid' && (
         <p className="text-sm text-text-muted m-0 mb-4">
           You searched for this place. Confirm it matches before reporting — we&apos;ll check for
           existing pins nearby to avoid duplicates.
@@ -154,6 +154,32 @@ export function PinConfirmModal() {
 
       {resolveResult && !loading && (
         <>
+          {resolveResult.action === 'invalid' && (
+            <div className="space-y-4">
+              <div className="flex items-start gap-3 p-4 rounded-md bg-amber-50 text-amber-900">
+                {resolveResult.reason === 'ocean' ? (
+                  <Waves size={20} className="shrink-0 mt-0.5" aria-hidden="true" />
+                ) : (
+                  <AlertCircle size={20} className="shrink-0 mt-0.5" aria-hidden="true" />
+                )}
+                <div>
+                  <p className="text-sm font-semibold m-0">
+                    {resolveResult.reason === 'ocean'
+                      ? "That's open water"
+                      : "That's outside the Philippines"}
+                  </p>
+                  <p className="text-sm m-0 mt-1 text-amber-800">
+                    {resolveResult.message ??
+                      'Pick a spot within the Philippines to add a pin.'}
+                  </p>
+                </div>
+              </div>
+              <Button variant="secondary" className="w-full" onClick={handleClose}>
+                Choose another spot
+              </Button>
+            </div>
+          )}
+
           {resolveResult.action === 'matched' && !forceNew && (
             <div className="space-y-4">
               <div className="p-4 rounded-md border border-border bg-bg-subtle">

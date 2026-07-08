@@ -74,3 +74,27 @@ export const locationCreateRateLimit = createRateLimiter({
   windowMs: 60 * 60 * 1000,
   message: 'Location create limit reached (10 per hour). Please try again later.',
 })
+
+/** Community moderation actions (votes/flags) — generous, but still capped against abuse. */
+export const reportActionRateLimit = createRateLimiter({
+  name: 'report-actions',
+  max: 60,
+  windowMs: 60 * 60 * 1000,
+  message: 'Too many actions. Please try again later.',
+})
+
+/** Photo upload signing/confirmation — up to ~3 photos per report, generous headroom for retries. */
+export const uploadRateLimit = createRateLimiter({
+  name: 'uploads',
+  max: 40,
+  windowMs: 60 * 60 * 1000,
+  message: 'Too many photo uploads. Please try again later.',
+})
+
+/** Account deletion — strict cap to prevent abuse. */
+export const accountDeleteRateLimit = createRateLimiter({
+  name: 'account-delete',
+  max: 3,
+  windowMs: 60 * 60 * 1000,
+  message: 'Too many deletion attempts. Please try again later.',
+})

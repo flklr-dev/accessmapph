@@ -12,6 +12,8 @@ export interface IUser extends Document {
   level: UserLevel
   city: string | null
   reportCount: number
+  /** Times this user's reports were flagged/hidden by the community. Demotes trust. */
+  flaggedCount: number
   lastReportAt: Date | null
   createdAt: Date
   updatedAt: Date
@@ -43,6 +45,7 @@ const UserSchema = new Schema<IUser>(
     },
     city: { type: String, default: null, trim: true },
     reportCount: { type: Number, default: 0, min: 0 },
+    flaggedCount: { type: Number, default: 0, min: 0 },
     lastReportAt: { type: Date, default: null },
   },
   {
@@ -68,6 +71,7 @@ const UserSchema = new Schema<IUser>(
 )
 
 UserSchema.index({ email: 1 })
+UserSchema.index({ points: -1, reportCount: -1 })
 
 export const User: Model<IUser> =
   mongoose.models.User ?? mongoose.model<IUser>('User', UserSchema)

@@ -4,7 +4,7 @@ import type {
   PlaceSearchResponse,
   ResolveLocationResponse,
 } from '../types'
-import { distanceMeters, MATCH_RADIUS_METERS } from '../lib/geo'
+import { distanceMeters, isWithinPhilippinesBounds, MATCH_RADIUS_METERS } from '../lib/geo'
 import { apiFetch } from './http'
 
 export async function fetchLocations(): Promise<Location[]> {
@@ -36,6 +36,18 @@ export function resolveLocationLocally(
   localLocations: Location[],
 ): ResolveLocationResponse {
   const tap = { lat, lng }
+
+  // Offline fallback can't reverse-geocode, so it can only catch the
+  // obviously-outside-PH case (not open ocean within the bounding box).
+  if (!isWithinPhilippinesBounds(lat, lng)) {
+    return {
+      action: 'invalid',
+      tap,
+      reason: 'outside_ph',
+      message: 'This spot is outside the Philippines. AccessMap PH only covers locations within the country.',
+    }
+  }
+
   const nearby = localLocations
     .map((location) => ({
       location,

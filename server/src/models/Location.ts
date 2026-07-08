@@ -12,10 +12,16 @@ export interface IReport {
   featureType: FeatureType
   status: AccessibilityStatus
   description?: string
+  /** Cloudinary secure_urls, verified server-side before being attached to the report. */
+  photos: string[]
   upvotes: number
   downvotes: number
   verified: boolean
   aiVerdict: AIVerdict
+  /** Voter/flagger uids — kept server-side only for idempotency, never sent to clients. */
+  upvoterIds: string[]
+  downvoterIds: string[]
+  flaggerIds: string[]
   createdAt: Date
   updatedAt: Date
 }
@@ -34,7 +40,7 @@ export interface ILocation extends Document {
   placeKey: string | null
   source: LocationSource
   createdBy?: string | null
-  reports: IReport[]
+  reports: mongoose.Types.DocumentArray<IReport>
   createdAt: Date
   updatedAt: Date
 }
@@ -59,9 +65,14 @@ export interface ReportJSON {
   id: string
   locationId: string
   userId?: string
+  /** Public first name of the report author (privacy: never full name). */
+  authorName?: string | null
+  /** Public avatar of the report author, if any (same as leaderboard). */
+  authorPhotoURL?: string | null
   featureType: FeatureType
   status: AccessibilityStatus
   description?: string
+  photos: string[]
   upvotes: number
   downvotes: number
   verified: boolean
@@ -84,6 +95,14 @@ const ReportSchema = new Schema<IReport>(
       enum: ['accessible', 'partial', 'inaccessible', 'unverified'],
     },
     description: { type: String, maxlength: 280 },
+    photos: {
+      type: [String],
+      default: [],
+      validate: {
+        validator: (arr: string[]) => arr.length <= 3,
+        message: 'A report can have at most 3 photos.',
+      },
+    },
     upvotes: { type: Number, default: 0 },
     downvotes: { type: Number, default: 0 },
     verified: { type: Boolean, default: false },
@@ -92,6 +111,9 @@ const ReportSchema = new Schema<IReport>(
       enum: ['approved', 'flagged', 'pending'],
       default: 'pending',
     },
+    upvoterIds: { type: [String], default: [] },
+    downvoterIds: { type: [String], default: [] },
+    flaggerIds: { type: [String], default: [] },
   },
   { timestamps: true },
 )
@@ -159,6 +181,7 @@ const LocationSchema = new Schema<ILocation>(
             featureType: r.featureType,
             status: r.status,
             description: r.description,
+            photos: Array.isArray(r.photos) ? r.photos : [],
             upvotes: r.upvotes,
             downvotes: r.downvotes,
             verified: r.verified,

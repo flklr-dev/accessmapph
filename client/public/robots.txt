@@ -1,0 +1,5 @@
+# AccessMap PH — https://accessmapph.com
+User-agent: *
+Allow: /
+
+Sitemap: https://accessmapph.com/sitemap.xml

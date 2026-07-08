@@ -1,6 +1,10 @@
 import { useMapStore } from './store/mapStore'
 import { useLocations } from './hooks/useLocations'
+import { useAuthBootstrap } from './hooks/useAuthBootstrap'
 import { Header } from './components/layout/Header'
+import { AuthModal } from './components/auth/AuthModal'
+import { ProfileModal } from './components/auth/ProfileModal'
+import { LeaderboardModal } from './components/leaderboard/LeaderboardModal'
 import { Sidebar } from './components/layout/Sidebar'
 import { MobilePanel } from './components/layout/MobilePanel'
 import { MapView } from './components/map/MapView'
@@ -20,10 +24,10 @@ const spaceGradients = {
 }
 
 export default function App() {
+  useAuthBootstrap()
   useLocations()
   const activeSpace = useMapStore((s) => s.activeSpace)
   const selectedLocationId = useMapStore((s) => s.selectedLocationId)
-  const setSelectedLocation = useMapStore((s) => s.setSelectedLocation)
   const locations = useMapStore((s) => s.locations)
 
   const selectedLocation = locations.find((l) => l.id === selectedLocationId)
@@ -76,6 +80,9 @@ export default function App() {
       </div>
 
       <CommandPalette />
+      <AuthModal />
+      <ProfileModal />
+      <LeaderboardModal />
       <FindPlaceModal />
       <LocationConfirmModal />
       <ReportFormModal />

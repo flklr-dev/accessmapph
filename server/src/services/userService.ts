@@ -1,11 +1,36 @@
 import type { DecodedIdToken } from 'firebase-admin/auth'
-import { User, type IUser, type UserJSON } from '../models/User.js'
+import { User, type IUser, type UserJSON, type UserLevel } from '../models/User.js'
+import { Location } from '../models/Location.js'
+import { deleteFirebaseAuthUser } from '../lib/firebase.js'
+import { destroyUpload, publicIdFromCloudinaryUrl } from '../lib/cloudinary.js'
+import { toPublicFirstName } from '../lib/displayName.js'
 
 export interface AuthIdentity {
   uid: string
   email: string
   displayName: string
   photoURL: string | null
+}
+
+/**
+ * Tier 2 moderation: trust-based auto-approval.
+ * Users with a track record and zero community flags skip the "pending
+ * community review" step entirely — their reports go live as approved.
+ */
+export const AUTO_APPROVE_MIN_REPORTS = 3
+export const MAX_FLAGS_FOR_AUTO_APPROVE = 0
+
+export interface TrustStatus {
+  autoApprove: boolean
+  reportCount: number
+  flaggedCount: number
+}
+
+function levelForPoints(points: number): UserLevel {
+  if (points >= 500) return 'champion'
+  if (points >= 200) return 'trusted'
+  if (points >= 50) return 'contributor'
+  return 'newcomer'
 }
 
 function toPublicUser(user: IUser): UserJSON {
@@ -64,6 +89,33 @@ export async function getPublicUserByFirebaseUid(uid: string): Promise<UserJSON 
   return user ? toPublicUser(user) : null
 }
 
+export interface PublicAuthor {
+  name: string
+  photoURL: string | null
+}
+
+/**
+ * Batched author lookup for report cards — one query regardless of how many
+ * distinct reports/locations are being rendered. Privacy: first name only
+ * (matches leaderboard redaction); avatar photo is already public (same as
+ * the leaderboard).
+ */
+export async function getAuthorsByUids(uids: (string | undefined)[]): Promise<Map<string, PublicAuthor>> {
+  const unique = [...new Set(uids.filter((id): id is string => Boolean(id)))]
+  if (unique.length === 0) return new Map()
+
+  const users = await User.find({ firebaseUid: { $in: unique } })
+    .select('firebaseUid displayName photoURL')
+    .lean()
+
+  return new Map(
+    users.map((u) => [
+      u.firebaseUid,
+      { name: toPublicFirstName(u.displayName), photoURL: u.photoURL ?? null },
+    ]),
+  )
+}
+
 export async function recordReportContribution(firebaseUid: string): Promise<void> {
   const user = await User.findOne({ firebaseUid })
   if (!user) return
@@ -71,13 +123,173 @@ export async function recordReportContribution(firebaseUid: string): Promise<voi
   user.reportCount += 1
   user.points += 10
   user.lastReportAt = new Date()
-
-  if (user.points >= 500) user.level = 'champion'
-  else if (user.points >= 200) user.level = 'trusted'
-  else if (user.points >= 50) user.level = 'contributor'
-  else user.level = 'newcomer'
+  user.level = levelForPoints(user.points)
 
   await user.save()
+}
+
+/** Tier 2: does this user's history earn auto-approval, skipping community review? */
+export async function getTrustStatus(firebaseUid: string): Promise<TrustStatus> {
+  const user = await getUserByFirebaseUid(firebaseUid)
+  if (!user) return { autoApprove: false, reportCount: 0, flaggedCount: 0 }
+
+  const autoApprove =
+    user.reportCount >= AUTO_APPROVE_MIN_REPORTS &&
+    user.flaggedCount <= MAX_FLAGS_FOR_AUTO_APPROVE
+
+  return { autoApprove, reportCount: user.reportCount, flaggedCount: user.flaggedCount }
+}
+
+/** Tier 3: community flagged this user's report enough to hide it. Demotes trust. */
+export async function recordReportFlag(firebaseUid: string): Promise<void> {
+  const user = await User.findOne({ firebaseUid })
+  if (!user) return
+
+  user.flaggedCount += 1
+  user.points = Math.max(0, user.points - 15)
+  user.level = levelForPoints(user.points)
+
+  await user.save()
+}
+
+/** Tier 3: community upvotes confirmed this report. Small trust bonus. */
+export async function recordReportVerified(firebaseUid: string): Promise<void> {
+  const user = await User.findOne({ firebaseUid })
+  if (!user) return
+
+  user.points += 5
+  user.level = levelForPoints(user.points)
+
+  await user.save()
+}
+
+export interface UserContribution {
+  id: string
+  locationId: string
+  locationName: string
+  locationCity: string
+  featureType: string
+  status: string
+  description?: string
+  photos: string[]
+  upvotes: number
+  downvotes: number
+  verified: boolean
+  aiVerdict: string
+  createdAt: string
+}
+
+/** All reports authored by this user, newest first. */
+export async function getUserContributions(firebaseUid: string): Promise<UserContribution[]> {
+  const locations = await Location.find(
+    { 'reports.userId': firebaseUid },
+    { name: 1, city: 1, reports: 1 },
+  ).lean()
+
+  const contributions: UserContribution[] = []
+
+  for (const loc of locations) {
+    const locationId = loc._id.toString()
+    for (const report of loc.reports ?? []) {
+      if (report.userId !== firebaseUid) continue
+      contributions.push({
+        id: report._id.toString(),
+        locationId,
+        locationName: loc.name,
+        locationCity: loc.city,
+        featureType: report.featureType,
+        status: report.status,
+        description: report.description,
+        photos: Array.isArray(report.photos) ? report.photos : [],
+        upvotes: report.upvotes ?? 0,
+        downvotes: report.downvotes ?? 0,
+        verified: report.verified ?? false,
+        aiVerdict: report.aiVerdict ?? 'pending',
+        createdAt:
+          report.createdAt instanceof Date
+            ? report.createdAt.toISOString()
+            : String(report.createdAt ?? new Date().toISOString()),
+      })
+    }
+  }
+
+  contributions.sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+  )
+
+  return contributions
+}
+
+/**
+ * Permanently delete a user account and scrub personal data.
+ * - Removes the user's reports (accessibility data at those pins may remain from others)
+ * - Deletes their Cloudinary photos
+ * - Clears their votes/flags on other reports
+ * - Removes empty community pins they created alone
+ * - Deletes the MongoDB profile and Firebase Auth user
+ */
+export async function deleteUserAccount(firebaseUid: string): Promise<void> {
+  const locationsWithReports = await Location.find({ 'reports.userId': firebaseUid }).lean()
+
+  const photoUrls: string[] = []
+  for (const loc of locationsWithReports) {
+    for (const report of loc.reports ?? []) {
+      if (report.userId === firebaseUid) {
+        photoUrls.push(...(Array.isArray(report.photos) ? report.photos : []))
+      }
+    }
+  }
+
+  for (const url of photoUrls) {
+    const publicId = publicIdFromCloudinaryUrl(url)
+    if (publicId) await destroyUpload(publicId)
+  }
+
+  await Location.updateMany(
+    { 'reports.userId': firebaseUid },
+    { $pull: { reports: { userId: firebaseUid } } },
+  )
+
+  await Location.deleteMany({
+    createdBy: firebaseUid,
+    source: 'community',
+    reports: { $size: 0 },
+  })
+
+  const voterLocations = await Location.find({
+    $or: [
+      { 'reports.upvoterIds': firebaseUid },
+      { 'reports.downvoterIds': firebaseUid },
+      { 'reports.flaggerIds': firebaseUid },
+    ],
+  })
+
+  for (const loc of voterLocations) {
+    let dirty = false
+    for (const report of loc.reports) {
+      const hadUp = report.upvoterIds.includes(firebaseUid)
+      const hadDown = report.downvoterIds.includes(firebaseUid)
+      const hadFlag = report.flaggerIds.includes(firebaseUid)
+      if (!hadUp && !hadDown && !hadFlag) continue
+
+      report.upvoterIds = report.upvoterIds.filter((id: string) => id !== firebaseUid)
+      report.downvoterIds = report.downvoterIds.filter((id: string) => id !== firebaseUid)
+      report.flaggerIds = report.flaggerIds.filter((id: string) => id !== firebaseUid)
+      report.upvotes = report.upvoterIds.length
+      report.downvotes = report.downvoterIds.length
+      dirty = true
+    }
+    if (dirty) await loc.save()
+  }
+
+  await Location.updateMany({ createdBy: firebaseUid }, { $set: { createdBy: null } })
+
+  const deleted = await User.deleteOne({ firebaseUid })
+  if (deleted.deletedCount === 0) {
+    throw new Error('USER_NOT_FOUND')
+  }
+
+  await deleteFirebaseAuthUser(firebaseUid)
 }
 
 export { toPublicUser }

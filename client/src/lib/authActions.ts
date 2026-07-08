@@ -9,6 +9,7 @@ import {
   type ActionCodeSettings,
   type User,
 } from 'firebase/auth'
+import { deleteAccount as deleteAccountApi } from '../api/auth'
 import { getFirebaseAuth, isFirebaseConfigured } from './firebase'
 
 function mapAuthError(error: unknown): string {
@@ -140,4 +141,19 @@ export async function signInWithGoogle() {
 export async function signOutUser() {
   if (!isFirebaseConfigured()) return
   await signOut(getFirebaseAuth())
+}
+
+/**
+ * Permanently delete the account: wipes server data + Firebase Auth user,
+ * then clears the local session.
+ */
+export async function deleteAccount() {
+  if (!isFirebaseConfigured()) throw new Error('Auth is not configured yet.')
+  try {
+    await deleteAccountApi()
+    await signOut(getFirebaseAuth())
+  } catch (error) {
+    if (error instanceof Error) throw error
+    throw new Error('Could not delete account. Please try again.')
+  }
 }

@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import type { DisabilityType, FeatureType, Location, LocationSuggestion, Report } from '../types'
 import { SEED_LOCATIONS } from '../data/seedLocations'
+import { isWithinPhilippinesBounds } from '../lib/geo'
 
 export type ToastType = 'success' | 'error' | 'info'
 
@@ -40,10 +41,13 @@ interface MapState {
   isCommandPaletteOpen: boolean
   isFindPlaceModalOpen: boolean
   isLocationConfirmOpen: boolean
+  isLeaderboardOpen: boolean
   confirmLocationId: string | null
   locationConfirmPrefill: LocationSuggestion | null
   setCommandPaletteOpen: (open: boolean) => void
   setFindPlaceModalOpen: (open: boolean) => void
+  openLeaderboard: () => void
+  closeLeaderboard: () => void
   activeSpace: 'all' | 'manila' | 'cebu' | 'davao'
   setActiveSpace: (space: 'all' | 'manila' | 'cebu' | 'davao') => void
 
@@ -59,6 +63,7 @@ interface MapState {
   closeReportModal: () => void
   setSubmittingReport: (submitting: boolean) => void
   addReport: (locationId: string, report: Report) => void
+  replaceReport: (locationId: string, report: Report) => void
   upsertLocation: (location: Location) => void
   showToast: (message: string, type: ToastType) => void
   clearToast: () => void
@@ -71,7 +76,7 @@ interface MapState {
   startReportFromSearch: (place: SearchPlaceSelection) => void
 }
 
-export const useMapStore = create<MapState>((set) => ({
+export const useMapStore = create<MapState>((set, get) => ({
   locations: SEED_LOCATIONS,
   selectedLocationId: null,
   featureFilters: [],
@@ -87,10 +92,13 @@ export const useMapStore = create<MapState>((set) => ({
   isCommandPaletteOpen: false,
   isFindPlaceModalOpen: false,
   isLocationConfirmOpen: false,
+  isLeaderboardOpen: false,
   confirmLocationId: null,
   locationConfirmPrefill: null,
   setCommandPaletteOpen: (open) => set({ isCommandPaletteOpen: open }),
   setFindPlaceModalOpen: (open) => set({ isFindPlaceModalOpen: open }),
+  openLeaderboard: () => set({ isLeaderboardOpen: true }),
+  closeLeaderboard: () => set({ isLeaderboardOpen: false }),
   activeSpace: 'all',
   setActiveSpace: (space) => set({ activeSpace: space, selectedLocationId: null, mapTap: null }),
 
@@ -137,6 +145,18 @@ export const useMapStore = create<MapState>((set) => ({
       ),
     })),
 
+  replaceReport: (locationId, report) =>
+    set((state) => ({
+      locations: state.locations.map((loc) =>
+        loc.id === locationId
+          ? {
+              ...loc,
+              reports: loc.reports.map((r) => (r.id === report.id ? report : r)),
+            }
+          : loc,
+      ),
+    })),
+
   upsertLocation: (location) =>
     set((state) => {
       const exists = state.locations.some((l) => l.id === location.id)
@@ -153,8 +173,13 @@ export const useMapStore = create<MapState>((set) => ({
 
   clearToast: () => set({ toast: null }),
 
-  setMapTap: (tap) =>
-    set({ mapTap: tap, isPinModalOpen: false, selectedLocationId: null }),
+  setMapTap: (tap) => {
+    if (!isWithinPhilippinesBounds(tap.lat, tap.lng)) {
+      get().showToast('AccessMap PH only covers locations within the Philippines.', 'error')
+      return
+    }
+    set({ mapTap: tap, isPinModalOpen: false, selectedLocationId: null })
+  },
 
   clearMapTap: () => set({ mapTap: null, isPinModalOpen: false }),
 

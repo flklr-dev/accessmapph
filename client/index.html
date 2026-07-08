@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en-PH">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <!-- Primary SEO -->
+    <title>AccessMap PH — Crowdsourced Accessibility Map for PWDs in the Philippines</title>
+    <meta
+      name="description"
+      content="Find and report wheelchair-accessible ramps, elevators, restrooms, and parking at malls, hospitals, schools, and government offices across the Philippines. A free, crowdsourced accessibility map built for and by the Filipino PWD community."
+    />
+    <meta
+      name="keywords"
+      content="accessibility map Philippines, wheelchair accessible Philippines, PWD map, disability accessibility PH, accessible ramps Philippines, accessible restrooms, accessible parking, AccessMap PH"
+    />
+    <meta name="author" content="AccessMap PH" />
+    <meta name="robots" content="index, follow, max-image-preview:large" />
+    <meta name="theme-color" content="#8E5FEB" />
+    <link rel="canonical" href="https://accessmapph.com/" />
+
+    <!-- Icons / PWA -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/favicon.svg" />
+    <link rel="manifest" href="/site.webmanifest" />
+
+    <!-- Open Graph (Facebook, LinkedIn, etc.) -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="AccessMap PH" />
+    <meta property="og:locale" content="en_PH" />
+    <meta property="og:url" content="https://accessmapph.com/" />
+    <meta
+      property="og:title"
+      content="AccessMap PH — Crowdsourced Accessibility Map for PWDs in the Philippines"
+    />
+    <meta
+      property="og:description"
+      content="Find and report wheelchair-accessible ramps, elevators, restrooms, and parking across the Philippines. Free and community-verified."
+    />
+    <meta property="og:image" content="https://accessmapph.com/og-image.png" />
+    <meta property="og:image:width" content="343" />
+    <meta property="og:image:height" content="361" />
+
+    <!-- Twitter / X Card -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="AccessMap PH — Accessibility Map for the Philippines" />
+    <meta
+      name="twitter:description"
+      content="Find and report wheelchair-accessible ramps, elevators, restrooms, and parking across the Philippines. Free and community-verified."
+    />
+    <meta name="twitter:image" content="https://accessmapph.com/og-image.png" />
+
+    <!-- Performance: connect early to the origins the map/photos load from -->
+    <link rel="preconnect" href="https://tile.openstreetmap.org" crossorigin />
+    <link rel="preconnect" href="https://res.cloudinary.com" crossorigin />
+
+    <!-- Structured data: helps Google understand what AccessMap PH is -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": "AccessMap PH",
+        "url": "https://accessmapph.com/",
+        "description": "Crowdsourced accessibility mapping for Filipino PWDs. Report and discover real accessibility conditions at malls, government offices, hospitals, and public spaces across the Philippines.",
+        "applicationCategory": "MapApplication",
+        "operatingSystem": "Any",
+        "isAccessibleForFree": true,
+        "audience": {
+          "@type": "Audience",
+          "audienceType": "Persons with disabilities"
+        },
+        "areaServed": {
+          "@type": "Country",
+          "name": "Philippines"
+        },
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "PHP"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <noscript>
+      <div style="font-family: sans-serif; max-width: 640px; margin: 48px auto; padding: 0 20px; color: #1a1a1a;">
+        <h1>AccessMap PH</h1>
+        <p>
+          AccessMap PH is a crowdsourced accessibility map for Filipino persons with
+          disabilities (PWDs). Find and report wheelchair-accessible ramps, elevators,
+          restrooms, and parking at malls, hospitals, schools, and government offices
+          across the Philippines.
+        </p>
+        <p>Please enable JavaScript in your browser to use the interactive map.</p>
+      </div>
+    </noscript>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

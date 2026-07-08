@@ -1,8 +1,12 @@
+import { isWithinPhilippinesBounds } from './geo.js'
+
 export interface ReverseGeocodeResult {
   name: string
   address: string
   city: string
   placeKey: string | null
+  /** ISO 3166-1 alpha-2, lowercase (e.g. "ph"). Null if Nominatim couldn't resolve an address. */
+  countryCode: string | null
 }
 
 export interface PlaceSearchResult {
@@ -23,6 +27,7 @@ interface NominatimAddress {
   county?: string
   state?: string
   country?: string
+  country_code?: string
 }
 
 interface NominatimResponse {
@@ -34,6 +39,8 @@ interface NominatimResponse {
   lon?: string
   address?: NominatimAddress
   name?: string
+  /** Present (with HTTP 200) for open ocean / unresolvable points, e.g. "Unable to geocode". */
+  error?: string
 }
 
 const NOMINATIM_HEADERS = {
@@ -76,11 +83,16 @@ export async function reverseGeocode(
     if (!response.ok) return null
 
     const data = (await response.json()) as NominatimResponse
-    const city = extractCity(data.address ?? {})
+    // Open ocean / no-data points come back as HTTP 200 with an `error` field
+    // and no `address` — treat that the same as "couldn't resolve".
+    if (data.error || !data.address) return null
+
+    const city = extractCity(data.address)
     const address = formatAddress(data, city) || `${lat.toFixed(5)}, ${lng.toFixed(5)}`
     const name = data.name ?? data.address?.road ?? data.address?.suburb ?? `Location near ${city}`
+    const countryCode = data.address.country_code?.toLowerCase() ?? null
 
-    return { name, address, city, placeKey: buildPlaceKey(data) }
+    return { name, address, city, placeKey: buildPlaceKey(data), countryCode }
   } catch {
     return null
   }
@@ -133,4 +145,48 @@ export async function searchPlaces(
   } catch {
     return []
   }
+}
+
+export type GeofenceRejectionReason = 'outside_ph' | 'ocean'
+
+export interface GeofenceResult {
+  valid: boolean
+  reason?: GeofenceRejectionReason
+  message?: string
+  /** Reverse-geocode data for the point — reuse this instead of geocoding again. */
+  geocode?: ReverseGeocodeResult
+}
+
+const REJECTION_MESSAGES: Record<GeofenceRejectionReason, string> = {
+  outside_ph: 'This spot is outside the Philippines. AccessMap PH only covers locations within the country.',
+  ocean: "This looks like open water. Pick a spot on land to add a pin.",
+}
+
+/**
+ * Authoritative check that a coordinate is on Philippine land — used before a
+ * pin can be created or reported on. Two layers, cheapest first:
+ *  1. Bounding-box filter (instant, no network call) rejects anything far
+ *     outside the archipelago.
+ *  2. Reverse geocode via Nominatim confirms the country and rejects points
+ *     that resolve to nothing (open ocean / unmapped water).
+ */
+export async function verifyPhilippineLocation(
+  lat: number,
+  lng: number,
+): Promise<GeofenceResult> {
+  if (!isWithinPhilippinesBounds(lat, lng)) {
+    return { valid: false, reason: 'outside_ph', message: REJECTION_MESSAGES.outside_ph }
+  }
+
+  const geocode = await reverseGeocode(lat, lng)
+
+  if (!geocode) {
+    return { valid: false, reason: 'ocean', message: REJECTION_MESSAGES.ocean }
+  }
+
+  if (geocode.countryCode && geocode.countryCode !== 'ph') {
+    return { valid: false, reason: 'outside_ph', message: REJECTION_MESSAGES.outside_ph }
+  }
+
+  return { valid: true, geocode }
 }

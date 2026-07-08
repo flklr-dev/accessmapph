@@ -34,7 +34,7 @@ export function StatusBadge({ status, verified, className }: StatusBadgeProps) {
         {STATUS_LABELS[status]}
       </span>
       {verified && (
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-semibold uppercase tracking-wide rounded-sm bg-blue-50 text-blue-500">
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-semibold uppercase tracking-wide rounded-sm bg-green-50 text-green-600">
           <CheckCircle size={14} aria-hidden="true" />
           Verified
         </span>

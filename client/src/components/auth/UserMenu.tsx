@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect } from 'react'
-import { LogOut, User } from 'lucide-react'
+import { FileText, LogOut, Shield, User, UserCircle } from 'lucide-react'
 import { useAuthStore } from '../../store/authStore'
 import { signOutUser } from '../../lib/authActions'
+import { LEVEL_LABELS } from '../../types/auth'
 import { cn } from '../../lib/utils'
 
 interface UserMenuProps {
@@ -12,6 +13,7 @@ export function UserMenu({ variant = 'light' }: UserMenuProps) {
   const firebaseUser = useAuthStore((s) => s.firebaseUser)
   const profile = useAuthStore((s) => s.profile)
   const openAuthModal = useAuthStore((s) => s.openAuthModal)
+  const openProfileModal = useAuthStore((s) => s.openProfileModal)
   const loading = useAuthStore((s) => s.loading)
 
   const [open, setOpen] = useState(false)
@@ -98,11 +100,47 @@ export function UserMenu({ variant = 'light' }: UserMenuProps) {
             <p className="text-sm font-semibold text-ink m-0 truncate">{label}</p>
             <p className="text-xs text-ink-muted m-0 truncate">{firebaseUser.email}</p>
             {profile && (
-              <p className="text-[11px] text-ink-muted m-0 mt-1 capitalize">
-                {profile.level} · {profile.points} pts
+              <p className="text-[11px] text-ink-muted m-0 mt-1">
+                {LEVEL_LABELS[profile.level]} · {profile.points} pts
               </p>
             )}
           </div>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setOpen(false)
+              openProfileModal()
+            }}
+            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-ink rounded-sm hover:bg-surface-1 border-0 bg-transparent cursor-pointer text-left"
+          >
+            <UserCircle size={14} aria-hidden="true" />
+            View profile
+          </button>
+          <div className="my-1 border-t border-border" role="separator" />
+          <a
+            href="/legal/privacy.html"
+            target="_blank"
+            rel="noopener noreferrer"
+            role="menuitem"
+            onClick={() => setOpen(false)}
+            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-ink rounded-sm hover:bg-surface-1 no-underline"
+          >
+            <Shield size={14} aria-hidden="true" />
+            Privacy Policy
+          </a>
+          <a
+            href="/legal/terms.html"
+            target="_blank"
+            rel="noopener noreferrer"
+            role="menuitem"
+            onClick={() => setOpen(false)}
+            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-ink rounded-sm hover:bg-surface-1 no-underline"
+          >
+            <FileText size={14} aria-hidden="true" />
+            Terms &amp; Conditions
+          </a>
+          <div className="my-1 border-t border-border" role="separator" />
           <button
             type="button"
             role="menuitem"

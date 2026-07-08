@@ -76,7 +76,7 @@ export function Modal({ open, onClose, title, children, className, elevated = fa
         aria-modal="true"
         aria-labelledby={titleId}
         className={cn(
-          'bg-canvas rounded-lg border border-border p-6 md:p-8 w-full max-w-[480px] max-h-[90vh] overflow-y-auto shadow-elevated',
+          'bg-canvas rounded-lg border border-border p-6 md:p-8 w-full max-w-[480px] max-h-[90vh] overflow-y-auto scrollbar-hidden shadow-elevated',
           className,
         )}
       >

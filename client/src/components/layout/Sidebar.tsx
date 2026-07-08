@@ -6,15 +6,8 @@ import {
   Folder, 
   MapPin, 
   Globe, 
-  Compass,
-  SlidersHorizontal,
-  Info,
-  Layers,
-  Map,
-  Plus
 } from 'lucide-react'
 import { useMapStore } from '../../store/mapStore'
-import { useAuthStore } from '../../store/authStore'
 import { useFilteredLocations, useLocationStatus } from '../../hooks/useFilteredLocations'
 import { UserMenu } from '../auth/UserMenu'
 import { FEATURE_LABELS, DISABILITY_LABELS, type FeatureType, type DisabilityType, type LocationCategory } from '../../types'
@@ -60,9 +53,6 @@ export function Sidebar() {
   
   const setCommandPaletteOpen = useMapStore((s) => s.setCommandPaletteOpen)
   const clearFilters = useMapStore((s) => s.clearFilters)
-  const mapTap = useMapStore((s) => s.mapTap)
-  const openPinModal = useMapStore((s) => s.openPinModal)
-  const requireAuth = useAuthStore((s) => s.requireAuth)
 
   const filteredLocations = useFilteredLocations()
   const getLocationStatus = useLocationStatus()
@@ -110,41 +100,8 @@ export function Sidebar() {
         </button>
       </div>
 
-      {/* Middle Scrollable Section (Pinned Actions & Folders) */}
-      <div className="flex-1 overflow-y-auto px-2 space-y-4 scrollbar-thin">
-        {/* Pinned Tabs List */}
-        <div className="space-y-1">
-          <p className="text-[10px] font-bold uppercase tracking-wider text-[#888888] px-2 mb-2">
-            Favorites
-          </p>
-          
-          {/* Add Pin Shortcut (If user tapped map) */}
-          {mapTap && (
-            <button
-              type="button"
-              onClick={() =>
-                requireAuth(openPinModal, 'Sign in to report at this spot.')
-              }
-              className="w-full flex items-center gap-2.5 px-2 py-2 rounded-md text-xs font-semibold bg-primary/20 text-[#8E5FEB] hover:bg-primary/30 text-left border-0 cursor-pointer animate-pulse"
-            >
-              <Plus size={16} />
-              <span className="truncate">Report at selected spot</span>
-            </button>
-          )}
-
-          <button
-            type="button"
-            onClick={() => setSelectedLocation(null)}
-            className={cn(
-              "w-full flex items-center gap-2.5 px-2 py-2 rounded-md text-xs font-semibold text-left border-0 cursor-pointer transition-colors",
-              !selectedLocationId ? "bg-white/10 text-white" : "text-[#888888] hover:bg-white/5 hover:text-white"
-            )}
-          >
-            <Map size={15} />
-            <span>Map View Overview</span>
-          </button>
-        </div>
-
+      {/* Middle Scrollable Section */}
+      <div className="flex-1 overflow-y-auto px-2 space-y-4 scrollbar-hidden">
         {/* Filters / Collapsible Folders */}
         <div className="space-y-1">
           <p className="text-[10px] font-bold uppercase tracking-wider text-[#888888] px-2 mb-2">
@@ -245,7 +202,7 @@ export function Sidebar() {
               <span className="flex-1 truncate font-medium">Locations ({filteredLocations.length})</span>
             </button>
             {isLocationsOpen && (
-              <div className="pl-3 pr-1 py-1 space-y-0.5 max-h-[220px] overflow-y-auto">
+              <div className="pl-3 pr-1 py-1 space-y-0.5 max-h-[220px] overflow-y-auto scrollbar-hidden">
                 {filteredLocations.length === 0 ? (
                   <div className="text-[11px] text-[#888888] px-2 py-3">No locations match.</div>
                 ) : (

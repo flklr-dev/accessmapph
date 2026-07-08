@@ -26,9 +26,14 @@ export interface Report {
   id: string
   locationId: string
   userId?: string
+  /** Public first name of the report author (privacy: never full name). */
+  authorName?: string | null
+  /** Public avatar of the report author, if any (same as leaderboard). */
+  authorPhotoURL?: string | null
   featureType: FeatureType
   status: AccessibilityStatus
   description?: string
+  photos: string[]
   upvotes: number
   downvotes: number
   verified: boolean
@@ -41,10 +46,12 @@ export interface SubmitReportInput {
   featureType: FeatureType
   status: ReportStatus
   description?: string
+  photos?: string[]
 }
 
 export interface ModerationResult {
   valid: boolean
+  verdict: AIVerdict
   reason: string
   confidence: number
 }
@@ -71,7 +78,9 @@ export interface Location {
   reports: Report[]
 }
 
-export type ResolveAction = 'matched' | 'nearby' | 'new'
+export type ResolveAction = 'matched' | 'nearby' | 'new' | 'invalid'
+
+export type GeofenceRejectionReason = 'outside_ph' | 'ocean'
 
 export type MatchReason = 'place_key' | 'proximity' | 'strong_proximity'
 
@@ -96,6 +105,8 @@ export interface ResolveLocationResponse {
   matchReason?: MatchReason
   candidates?: LocationCandidate[]
   suggestion?: LocationSuggestion
+  reason?: GeofenceRejectionReason
+  message?: string
 }
 
 export interface CreateLocationInput {

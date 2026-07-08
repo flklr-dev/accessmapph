@@ -32,7 +32,9 @@ function getMatchingReports(
   featureFilters: FeatureType[],
   disabilityFilters: DisabilityType[],
 ): Report[] {
-  let reports = location.reports
+  // Flagged reports (hard-failed rules or hidden by community votes/flags)
+  // never count toward the location's displayed status.
+  let reports = location.reports.filter((r) => r.aiVerdict !== 'flagged')
 
   if (featureFilters.length > 0) {
     reports = reports.filter((r) => featureFilters.includes(r.featureType))

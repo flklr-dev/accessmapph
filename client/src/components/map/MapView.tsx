@@ -10,6 +10,7 @@ import { MapLegend } from './MapLegend'
 import { MapTapBar } from './MapTapBar'
 import { MapSearchBar } from './MapSearchBar'
 import { MapPinHint } from './MapPinHint'
+import { MapLeaderboardButton } from './MapLeaderboardButton'
 
 const statusMarkerClass: Record<AccessibilityStatus, string> = {
   accessible: 'access-marker-accessible',
@@ -44,6 +45,7 @@ export function MapView() {
   const leafletMapRef = useRef<L.Map | null>(null)
   const markersRef = useRef<L.Marker[]>([])
   const draftMarkerRef = useRef<L.Marker | null>(null)
+  const prevSelectedIdRef = useRef<string | null | undefined>(undefined)
 
   const filteredLocations = useFilteredLocations()
   const getLocationStatus = useLocationStatus()
@@ -120,11 +122,25 @@ export function MapView() {
 
   useEffect(() => {
     const map = leafletMapRef.current
-    if (!map || !selectedLocationId) return
+    if (!map) return
 
-    const location = filteredLocations.find((l) => l.id === selectedLocationId)
-    if (location) {
-      map.flyTo([location.lat, location.lng], 15, { duration: 0.8 })
+    const prev = prevSelectedIdRef.current
+    prevSelectedIdRef.current = selectedLocationId
+
+    // Initial mount — map already starts at the PH overview.
+    if (prev === undefined) return
+
+    if (selectedLocationId) {
+      const location = filteredLocations.find((l) => l.id === selectedLocationId)
+      if (location) {
+        map.flyTo([location.lat, location.lng], 15, { duration: 0.8 })
+      }
+      return
+    }
+
+    // Pin deselected / detail panel closed → full Philippines overview.
+    if (prev !== null) {
+      map.flyTo([DEFAULT_CENTER.lat, DEFAULT_CENTER.lng], DEFAULT_ZOOM, { duration: 0.9 })
     }
   }, [selectedLocationId, filteredLocations])
 
@@ -172,6 +188,7 @@ export function MapView() {
 
       {!mapTap && <MapSearchBar />}
       {!mapTap && <MapPinHint />}
+      {!mapTap && <MapLeaderboardButton />}
 
       <MapTapBar />
       <MapLegend />

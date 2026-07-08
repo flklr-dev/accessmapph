@@ -1,4 +1,4 @@
-import type { SubmitReportInput, SubmitReportResponse } from '../types'
+import type { Report, SubmitReportInput, SubmitReportResponse } from '../types'
 import { apiFetch } from './http'
 
 const DESCRIPTION_MAX = 280
@@ -24,6 +24,26 @@ export async function submitReport(
     body: input,
     auth: true,
   })
+}
+
+export async function voteOnReport(
+  locationId: string,
+  reportId: string,
+  direction: 'up' | 'down',
+): Promise<Report> {
+  const result = await apiFetch<{ report: Report }>(
+    `/api/reports/${locationId}/${reportId}/vote`,
+    { method: 'POST', body: { direction }, auth: true },
+  )
+  return result.report
+}
+
+export async function flagReport(locationId: string, reportId: string): Promise<Report> {
+  const result = await apiFetch<{ report: Report }>(
+    `/api/reports/${locationId}/${reportId}/flag`,
+    { method: 'POST', auth: true },
+  )
+  return result.report
 }
 
 export { DESCRIPTION_MAX }

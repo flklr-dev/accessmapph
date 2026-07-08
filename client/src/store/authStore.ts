@@ -11,12 +11,15 @@ interface AuthState {
   loading: boolean
   isAuthModalOpen: boolean
   authModalMessage: string | null
+  isProfileModalOpen: boolean
   pendingAction: PendingAction
   setFirebaseUser: (user: FirebaseUser | null) => void
   setProfile: (profile: AppUser | null) => void
   setLoading: (loading: boolean) => void
   openAuthModal: (message?: string, pendingAction?: PendingAction) => void
   closeAuthModal: () => void
+  openProfileModal: () => void
+  closeProfileModal: () => void
   /** Run action if signed in and verified; otherwise open sign-in / verify UI. */
   requireAuth: (action: () => void, message?: string) => boolean
   runPendingAction: () => void
@@ -28,9 +31,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   loading: true,
   isAuthModalOpen: false,
   authModalMessage: null,
+  isProfileModalOpen: false,
   pendingAction: null,
 
-  setFirebaseUser: (user) => set({ firebaseUser: user }),
+  setFirebaseUser: (user) =>
+    set(
+      user
+        ? { firebaseUser: user }
+        : { firebaseUser: null, profile: null, isProfileModalOpen: false },
+    ),
   setProfile: (profile) => set({ profile }),
   setLoading: (loading) => set({ loading }),
 
@@ -43,6 +52,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   closeAuthModal: () =>
     set({ isAuthModalOpen: false, authModalMessage: null, pendingAction: null }),
+
+  openProfileModal: () => set({ isProfileModalOpen: true }),
+  closeProfileModal: () => set({ isProfileModalOpen: false }),
 
   requireAuth: (action, message) => {
     const user = get().firebaseUser

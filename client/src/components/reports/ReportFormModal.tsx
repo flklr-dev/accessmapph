@@ -13,6 +13,7 @@ import {
 import { Modal } from '../ui/Modal'
 import { Field } from '../ui/Field'
 import { Button } from '../ui/Button'
+import { PhotoUploadField } from './PhotoUploadField'
 import { cn } from '../../lib/utils'
 
 const inputClass =
@@ -38,12 +39,16 @@ export function ReportFormModal() {
   const [featureType, setFeatureType] = useState<FeatureType>('ramp')
   const [status, setStatus] = useState<ReportStatus>('accessible')
   const [description, setDescription] = useState('')
+  const [photos, setPhotos] = useState<string[]>([])
+  const [photosUploading, setPhotosUploading] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
 
   const resetForm = () => {
     setFeatureType('ramp')
     setStatus('accessible')
     setDescription('')
+    setPhotos([])
+    setPhotosUploading(false)
     setErrors({})
   }
 
@@ -55,7 +60,7 @@ export function ReportFormModal() {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
-    if (!location || isSubmitting) return
+    if (!location || isSubmitting || photosUploading) return
 
     const fieldErrors: Record<string, string> = {}
     if (!featureType) fieldErrors.featureType = 'Select a feature type.'
@@ -77,19 +82,25 @@ export function ReportFormModal() {
         featureType,
         status,
         description: description.trim() || undefined,
+        photos,
       })
 
       addReport(location.id, result.report)
 
-      if (result.moderation.valid) {
+      if (result.moderation.verdict === 'approved') {
         showToast(
           `Report published for ${FEATURE_LABELS[featureType]} at ${location.name}.`,
           'success',
         )
+      } else if (result.moderation.verdict === 'pending') {
+        showToast(
+          `Report is visible and awaiting community confirmation.`,
+          'info',
+        )
       } else {
         showToast(
-          `Report submitted for community review: ${result.moderation.reason}`,
-          'info',
+          `Report flagged automatically: ${result.moderation.reason}`,
+          'error',
         )
       }
 
@@ -117,12 +128,13 @@ export function ReportFormModal() {
         Reporting at <strong className="text-text font-medium">{location.name}</strong>
       </p>
 
-      <form onSubmit={handleSubmit} className="space-y-5" noValidate>
+      <form onSubmit={handleSubmit} noValidate>
         <Field
           label="Feature type"
           htmlFor="feature-type"
           hint="What accessibility feature are you reporting?"
           error={errors.featureType}
+          className="mb-6"
         >
           <select
             id="feature-type"
@@ -140,7 +152,7 @@ export function ReportFormModal() {
           </select>
         </Field>
 
-        <fieldset className="border-0 p-0 m-0">
+        <fieldset className="border-0 p-0 m-0 mb-6">
           <legend className="text-sm font-semibold text-text mb-1">
             Accessibility status
           </legend>
@@ -191,6 +203,7 @@ export function ReportFormModal() {
           htmlFor="description"
           hint="Optional — describe the condition in plain terms."
           error={errors.description}
+          className="mb-3"
         >
           <textarea
             id="description"
@@ -214,9 +227,18 @@ export function ReportFormModal() {
           </p>
         </Field>
 
+        <div className="mb-6">
+          <PhotoUploadField
+            photos={photos}
+            onChange={setPhotos}
+            onBusyChange={setPhotosUploading}
+            disabled={isSubmitting}
+          />
+        </div>
+
         {isSubmitting && (
           <div
-            className="flex items-center gap-2 px-3 py-2 rounded-md bg-blue-50 text-sm text-primary"
+            className="flex items-center gap-2 px-3 py-2 rounded-md bg-blue-50 text-sm text-primary mb-6"
             aria-busy="true"
             role="status"
           >
@@ -225,7 +247,7 @@ export function ReportFormModal() {
           </div>
         )}
 
-        <div className="flex flex-col-reverse sm:flex-row gap-3 pt-2">
+        <div className="flex flex-col-reverse sm:flex-row gap-3">
           <Button
             type="button"
             variant="secondary"
@@ -235,11 +257,21 @@ export function ReportFormModal() {
           >
             Cancel
           </Button>
-          <Button type="submit" variant="primary" className="flex-1" disabled={isSubmitting}>
+          <Button
+            type="submit"
+            variant="primary"
+            className="flex-1"
+            disabled={isSubmitting || photosUploading}
+          >
             {isSubmitting ? (
               <>
                 <Loader2 size={16} className="animate-spin" aria-hidden="true" />
                 Submitting…
+              </>
+            ) : photosUploading ? (
+              <>
+                <Loader2 size={16} className="animate-spin" aria-hidden="true" />
+                Uploading photos…
               </>
             ) : (
               'Submit Report'
