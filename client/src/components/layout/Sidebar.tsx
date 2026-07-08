@@ -10,6 +10,7 @@ import {
 import { useMapStore } from '../../store/mapStore'
 import { useFilteredLocations, useLocationStatus } from '../../hooks/useFilteredLocations'
 import { UserMenu } from '../auth/UserMenu'
+import { LogoMark } from './LogoMark'
 import { FEATURE_LABELS, DISABILITY_LABELS, type FeatureType, type DisabilityType, type LocationCategory } from '../../types'
 import { cn } from '../../lib/utils'
 
@@ -30,13 +31,6 @@ const statusColors = {
   partial: 'bg-yellow-500',
   inaccessible: 'bg-red-500',
   unverified: 'bg-gray-400',
-}
-
-const spaceGradients = {
-  all: 'from-[#8E5FEB] to-[#4CC9F0]',
-  manila: 'from-[#C77DFF] to-[#4CC9F0]',
-  cebu: 'from-[#FF9E00] to-[#E01E37]',
-  davao: 'from-[#20B2AA] to-[#0077B6]',
 }
 
 export function Sidebar() {
@@ -76,12 +70,7 @@ export function Sidebar() {
       {/* Top Header & Search bar (styled like Arc command search) */}
       <div className="p-4 shrink-0 flex flex-col gap-3">
         <div className="flex items-center gap-2">
-          <div className={cn(
-            "w-5 h-5 rounded-full bg-gradient-to-tr flex items-center justify-center text-[10px] font-bold text-white shadow-sm shrink-0",
-            spaceGradients[activeSpace]
-          )}>
-            A
-          </div>
+          <LogoMark size={20} className="w-5 h-5" />
           <span className="font-display font-extrabold text-[15px] tracking-tight bg-gradient-to-r from-white to-[#E8E8E8]/70 bg-clip-text text-transparent flex-1">
             AccessMap PH
           </span>

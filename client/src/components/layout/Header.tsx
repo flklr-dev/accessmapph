@@ -2,6 +2,7 @@ import { SlidersHorizontal, Search } from 'lucide-react'
 import { useMapStore } from '../../store/mapStore'
 import { countActiveFilters } from '../../store/selectors'
 import { UserMenu } from '../auth/UserMenu'
+import { LogoMark } from './LogoMark'
 import { cn } from '../../lib/utils'
 
 export function Header() {
@@ -28,12 +29,7 @@ export function Header() {
         className="flex items-center gap-2 shrink-0 no-underline hover:no-underline"
         aria-label="AccessMap PH home"
       >
-        <div className="flex items-center justify-center w-8 h-8 rounded-md bg-[#8E5FEB]/10">
-          <svg width="18" height="18" viewBox="0 0 32 32" fill="none" aria-hidden="true">
-            <circle cx="16" cy="15" r="9" stroke="#8E5FEB" strokeWidth="2.5" fill="none" />
-            <circle cx="16" cy="15" r="3" fill="#F0845A" />
-          </svg>
-        </div>
+        <LogoMark size={28} className="w-7 h-7" />
         <span className="text-sm font-display font-extrabold text-ink tracking-tight">
           AccessMap
         </span>
