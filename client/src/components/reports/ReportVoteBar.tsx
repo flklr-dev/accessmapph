@@ -19,7 +19,7 @@ interface ReportVoteBarProps {
  */
 export function ReportVoteBar({ locationId, report }: ReportVoteBarProps) {
   const requireAuth = useAuthStore((s) => s.requireAuth)
-  const firebaseUid = useAuthStore((s) => s.firebaseUser?.uid)
+  const myReportIds = useAuthStore((s) => s.myReportIds)
   const replaceReport = useMapStore((s) => s.replaceReport)
   const showToast = useMapStore((s) => s.showToast)
 
@@ -27,7 +27,7 @@ export function ReportVoteBar({ locationId, report }: ReportVoteBarProps) {
   const [myVote, setMyVoteState] = useState(() => getMyVote(report.id))
   const [flagged, setFlaggedState] = useState(() => hasFlagged(report.id))
 
-  const isOwnReport = Boolean(firebaseUid && report.userId === firebaseUid)
+  const isOwnReport = myReportIds.has(report.id)
 
   const handleVote = (direction: 'up' | 'down') => {
     if (busy || isOwnReport || flagged) return

@@ -8,7 +8,7 @@ import {
 } from '../services/locationService.js'
 import { searchPlaces } from '../lib/nominatim.js'
 import { requireAuth, requireVerifiedEmail, type AuthenticatedRequest } from '../middleware/auth.js'
-import { locationCreateRateLimit } from '../middleware/rateLimit.js'
+import { geocodeResolveRateLimit, geocodeSearchRateLimit, locationCreateRateLimit } from '../middleware/rateLimit.js'
 
 export const locationsRouter = Router()
 
@@ -23,7 +23,7 @@ locationsRouter.get('/', async (_req, res) => {
 })
 
 /** Search places by name — map pins + OpenStreetMap */
-locationsRouter.get('/search', async (req, res) => {
+locationsRouter.get('/search', geocodeSearchRateLimit, async (req, res) => {
   const query = typeof req.query.q === 'string' ? req.query.q.trim() : ''
   const limit = Math.min(Number(req.query.limit) || 6, 10)
 
@@ -59,7 +59,7 @@ locationsRouter.get('/:id', async (req, res) => {
   }
 })
 
-locationsRouter.post('/resolve', async (req, res) => {
+locationsRouter.post('/resolve', geocodeResolveRateLimit, async (req, res) => {
   const { lat, lng } = req.body ?? {}
 
   if (typeof lat !== 'number' || typeof lng !== 'number') {

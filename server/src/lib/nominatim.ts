@@ -48,6 +48,41 @@ const NOMINATIM_HEADERS = {
   Accept: 'application/json',
 }
 
+/** In-memory reverse-geocode cache (rounded coords) — reduces Nominatim abuse. */
+const reverseGeocodeCache = new Map<string, ReverseGeocodeResult | null>()
+const REVERSE_CACHE_MAX = 2000
+const REVERSE_CACHE_TTL_MS = 24 * 60 * 60 * 1000
+const reverseGeocodeCacheTimestamps = new Map<string, number>()
+
+function reverseCacheKey(lat: number, lng: number): string {
+  return `${lat.toFixed(4)},${lng.toFixed(4)}`
+}
+
+function getCachedReverse(lat: number, lng: number): ReverseGeocodeResult | null | undefined {
+  const key = reverseCacheKey(lat, lng)
+  const cachedAt = reverseGeocodeCacheTimestamps.get(key)
+  if (cachedAt === undefined) return undefined
+  if (Date.now() - cachedAt > REVERSE_CACHE_TTL_MS) {
+    reverseGeocodeCache.delete(key)
+    reverseGeocodeCacheTimestamps.delete(key)
+    return undefined
+  }
+  return reverseGeocodeCache.get(key) ?? null
+}
+
+function setCachedReverse(lat: number, lng: number, value: ReverseGeocodeResult | null): void {
+  if (reverseGeocodeCache.size >= REVERSE_CACHE_MAX) {
+    const oldestKey = reverseGeocodeCache.keys().next().value
+    if (oldestKey) {
+      reverseGeocodeCache.delete(oldestKey)
+      reverseGeocodeCacheTimestamps.delete(oldestKey)
+    }
+  }
+  const key = reverseCacheKey(lat, lng)
+  reverseGeocodeCache.set(key, value)
+  reverseGeocodeCacheTimestamps.set(key, Date.now())
+}
+
 function extractCity(addr: NominatimAddress): string {
   return addr.city ?? addr.town ?? addr.municipality ?? addr.suburb ?? addr.county ?? 'Unknown'
 }
@@ -71,6 +106,9 @@ export async function reverseGeocode(
   lat: number,
   lng: number,
 ): Promise<ReverseGeocodeResult | null> {
+  const cached = getCachedReverse(lat, lng)
+  if (cached !== undefined) return cached
+
   const url = new URL('https://nominatim.openstreetmap.org/reverse')
   url.searchParams.set('lat', String(lat))
   url.searchParams.set('lon', String(lng))
@@ -80,20 +118,29 @@ export async function reverseGeocode(
 
   try {
     const response = await fetch(url.toString(), { headers: NOMINATIM_HEADERS })
-    if (!response.ok) return null
+    if (!response.ok) {
+      setCachedReverse(lat, lng, null)
+      return null
+    }
 
     const data = (await response.json()) as NominatimResponse
     // Open ocean / no-data points come back as HTTP 200 with an `error` field
     // and no `address` — treat that the same as "couldn't resolve".
-    if (data.error || !data.address) return null
+    if (data.error || !data.address) {
+      setCachedReverse(lat, lng, null)
+      return null
+    }
 
     const city = extractCity(data.address)
     const address = formatAddress(data, city) || `${lat.toFixed(5)}, ${lng.toFixed(5)}`
     const name = data.name ?? data.address?.road ?? data.address?.suburb ?? `Location near ${city}`
     const countryCode = data.address.country_code?.toLowerCase() ?? null
 
-    return { name, address, city, placeKey: buildPlaceKey(data), countryCode }
+    const result = { name, address, city, placeKey: buildPlaceKey(data), countryCode }
+    setCachedReverse(lat, lng, result)
+    return result
   } catch {
+    setCachedReverse(lat, lng, null)
     return null
   }
 }

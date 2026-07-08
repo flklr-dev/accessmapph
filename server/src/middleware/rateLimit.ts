@@ -1,4 +1,4 @@
-import type { NextFunction, Response } from 'express'
+import type { NextFunction, Request, Response } from 'express'
 import type { AuthenticatedRequest } from './auth.js'
 
 interface WindowEntry {
@@ -17,6 +17,39 @@ setInterval(() => {
     if (entry.timestamps.length === 0) windows.delete(key)
   }
 }, CLEANUP_INTERVAL_MS).unref?.()
+
+function clientIp(req: Request): string {
+  const forwarded = req.headers['x-forwarded-for']
+  if (typeof forwarded === 'string' && forwarded.length > 0) {
+    return forwarded.split(',')[0].trim()
+  }
+  return req.ip || req.socket.remoteAddress || 'unknown'
+}
+
+function applyRateLimit(
+  key: string,
+  max: number,
+  windowMs: number,
+  res: Response,
+  message?: string,
+): boolean {
+  const now = Date.now()
+  const entry = windows.get(key) ?? { timestamps: [] }
+  entry.timestamps = entry.timestamps.filter((t) => now - t < windowMs)
+
+  if (entry.timestamps.length >= max) {
+    const retryAfterSec = Math.ceil((entry.timestamps[0] + windowMs - now) / 1000)
+    res.setHeader('Retry-After', String(Math.max(retryAfterSec, 1)))
+    res.status(429).json({
+      error: message ?? 'Too many requests. Please try again later.',
+    })
+    return false
+  }
+
+  entry.timestamps.push(now)
+  windows.set(key, entry)
+  return true
+}
 
 export function createRateLimiter(options: {
   /** Unique key prefix, e.g. "reports" */
@@ -41,21 +74,23 @@ export function createRateLimiter(options: {
     }
 
     const key = `${name}:${uid}`
-    const now = Date.now()
-    const entry = windows.get(key) ?? { timestamps: [] }
-    entry.timestamps = entry.timestamps.filter((t) => now - t < windowMs)
+    if (!applyRateLimit(key, max, windowMs, res, message)) return
+    next()
+  }
+}
 
-    if (entry.timestamps.length >= max) {
-      const retryAfterSec = Math.ceil((entry.timestamps[0] + windowMs - now) / 1000)
-      res.setHeader('Retry-After', String(Math.max(retryAfterSec, 1)))
-      res.status(429).json({
-        error: message ?? 'Too many requests. Please try again later.',
-      })
-      return
-    }
+/** IP-based limiter for unauthenticated public endpoints. */
+export function createIpRateLimiter(options: {
+  name: string
+  max: number
+  windowMs: number
+  message?: string
+}) {
+  const { name, max, windowMs, message } = options
 
-    entry.timestamps.push(now)
-    windows.set(key, entry)
+  return function ipRateLimit(req: Request, res: Response, next: NextFunction): void {
+    const key = `${name}:ip:${clientIp(req)}`
+    if (!applyRateLimit(key, max, windowMs, res, message)) return
     next()
   }
 }
@@ -97,4 +132,20 @@ export const accountDeleteRateLimit = createRateLimiter({
   max: 3,
   windowMs: 60 * 60 * 1000,
   message: 'Too many deletion attempts. Please try again later.',
+})
+
+/** Public geocoding search — per IP */
+export const geocodeSearchRateLimit = createIpRateLimiter({
+  name: 'geocode-search',
+  max: 30,
+  windowMs: 60 * 60 * 1000,
+  message: 'Too many search requests. Please try again later.',
+})
+
+/** Public coordinate resolve — per IP (each call may hit Nominatim) */
+export const geocodeResolveRateLimit = createIpRateLimiter({
+  name: 'geocode-resolve',
+  max: 60,
+  windowMs: 60 * 60 * 1000,
+  message: 'Too many location lookups. Please try again later.',
 })

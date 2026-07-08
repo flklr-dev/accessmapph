@@ -25,7 +25,6 @@ export type AIVerdict = 'approved' | 'flagged' | 'pending'
 export interface Report {
   id: string
   locationId: string
-  userId?: string
   /** Public first name of the report author (privacy: never full name). */
   authorName?: string | null
   /** Public avatar of the report author, if any (same as leaderboard). */
@@ -74,7 +73,6 @@ export interface Location {
   geohash?: string
   placeKey?: string | null
   source?: LocationSource
-  createdBy?: string | null
   reports: Report[]
 }
 

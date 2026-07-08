@@ -22,6 +22,9 @@ export const ALLOWED_FORMATS = ['jpg', 'jpeg', 'png', 'webp']
 const UPLOAD_TRANSFORMATION = 'c_limit,w_1600,h_1600,q_auto:good,f_auto'
 const ROOT_FOLDER = 'accessmapph/reports'
 
+/** Cloudinary public_id: folder segments + filename (no traversal or encoding tricks). */
+const SAFE_PUBLIC_ID_RE = /^[A-Za-z0-9_\-/]+$/
+
 let configured = false
 
 function configureOnce(): boolean {
@@ -52,6 +55,31 @@ export function isCloudinaryReady(): boolean {
 function userFolder(uid: string): string {
   // uid is a Firebase UID (opaque, alphanumeric) — safe to use directly in a path segment.
   return `${ROOT_FOLDER}/${uid}`
+}
+
+/** Reject path traversal, encoded separators, and other unsafe public_id values. */
+export function assertSafePublicId(publicId: string): void {
+  if (!publicId || publicId.length > 500) {
+    throw new Error('UPLOAD_OWNER_MISMATCH')
+  }
+  if (publicId.includes('..') || publicId.includes('\\') || publicId.includes('%') || publicId.includes('\0')) {
+    throw new Error('UPLOAD_OWNER_MISMATCH')
+  }
+  if (!SAFE_PUBLIC_ID_RE.test(publicId)) {
+    throw new Error('UPLOAD_OWNER_MISMATCH')
+  }
+}
+
+/** Ensure public_id is under the authenticated user's folder (prefix only — call assertSafePublicId first). */
+export function assertOwnedByUser(publicId: string, uid: string): void {
+  const prefix = `${userFolder(uid)}/`
+  if (!publicId.startsWith(prefix)) {
+    throw new Error('UPLOAD_OWNER_MISMATCH')
+  }
+  const remainder = publicId.slice(prefix.length)
+  if (!remainder || remainder.startsWith('/') || remainder.endsWith('/')) {
+    throw new Error('UPLOAD_OWNER_MISMATCH')
+  }
 }
 
 export interface UploadSignaturePayload {
@@ -114,21 +142,24 @@ export async function confirmUpload(uid: string, publicId: string): Promise<Conf
     throw new Error('CLOUDINARY_NOT_CONFIGURED')
   }
 
-  if (!publicId.startsWith(`${userFolder(uid)}/`)) {
-    throw new Error('UPLOAD_OWNER_MISMATCH')
-  }
+  assertSafePublicId(publicId)
+  assertOwnedByUser(publicId, uid)
 
   const resource = await cloudinary.api.resource(publicId, { resource_type: 'image' })
+
+  const resolvedId = String(resource.public_id ?? '')
+  assertSafePublicId(resolvedId)
+  assertOwnedByUser(resolvedId, uid)
 
   const format = String(resource.format ?? '').toLowerCase()
   const bytes = Number(resource.bytes ?? 0)
 
   if (!ALLOWED_FORMATS.includes(format) || bytes > MAX_PHOTO_BYTES || bytes <= 0) {
-    await destroyUpload(publicId)
+    await destroyUpload(resolvedId)
     throw new Error('UPLOAD_REJECTED')
   }
 
-  return { url: String(resource.secure_url), publicId }
+  return { url: String(resource.secure_url), publicId: resolvedId }
 }
 
 export async function destroyUpload(publicId: string): Promise<void> {
@@ -146,7 +177,10 @@ export function publicIdFromCloudinaryUrl(url: string): string | null {
   try {
     const parsed = new URL(url)
     const match = parsed.pathname.match(/\/image\/upload\/(?:v\d+\/)?(.+)\.[a-zA-Z0-9]+$/)
-    return match?.[1] ?? null
+    const publicId = match?.[1] ?? null
+    if (!publicId) return null
+    assertSafePublicId(publicId)
+    return publicId
   } catch {
     return null
   }
@@ -163,6 +197,19 @@ export function isOwnCloudinaryUrl(url: string): boolean {
     if (parsed.hostname !== 'res.cloudinary.com') return false
     return parsed.pathname.startsWith(`/${cloudName}/image/upload/`) &&
       parsed.pathname.includes(`/${ROOT_FOLDER}/`)
+  } catch {
+    return false
+  }
+}
+
+/** True if the URL belongs to the given user's upload folder. */
+export function isOwnCloudinaryUrlForUser(url: string, uid: string): boolean {
+  if (!isOwnCloudinaryUrl(url)) return false
+  const publicId = publicIdFromCloudinaryUrl(url)
+  if (!publicId) return false
+  try {
+    assertOwnedByUser(publicId, uid)
+    return true
   } catch {
     return false
   }

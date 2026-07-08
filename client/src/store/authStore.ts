@@ -8,6 +8,8 @@ type PendingAction = (() => void) | null
 interface AuthState {
   firebaseUser: FirebaseUser | null
   profile: AppUser | null
+  /** Report IDs authored by the signed-in user (server no longer exposes author UIDs publicly). */
+  myReportIds: Set<string>
   loading: boolean
   isAuthModalOpen: boolean
   authModalMessage: string | null
@@ -15,6 +17,8 @@ interface AuthState {
   pendingAction: PendingAction
   setFirebaseUser: (user: FirebaseUser | null) => void
   setProfile: (profile: AppUser | null) => void
+  setMyReportIds: (ids: string[]) => void
+  addMyReportId: (id: string) => void
   setLoading: (loading: boolean) => void
   openAuthModal: (message?: string, pendingAction?: PendingAction) => void
   closeAuthModal: () => void
@@ -28,6 +32,7 @@ interface AuthState {
 export const useAuthStore = create<AuthState>((set, get) => ({
   firebaseUser: null,
   profile: null,
+  myReportIds: new Set(),
   loading: true,
   isAuthModalOpen: false,
   authModalMessage: null,
@@ -38,9 +43,16 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     set(
       user
         ? { firebaseUser: user }
-        : { firebaseUser: null, profile: null, isProfileModalOpen: false },
+        : { firebaseUser: null, profile: null, myReportIds: new Set(), isProfileModalOpen: false },
     ),
   setProfile: (profile) => set({ profile }),
+  setMyReportIds: (ids) => set({ myReportIds: new Set(ids) }),
+  addMyReportId: (id) =>
+    set((state) => {
+      const next = new Set(state.myReportIds)
+      next.add(id)
+      return { myReportIds: next }
+    }),
   setLoading: (loading) => set({ loading }),
 
   openAuthModal: (message, pendingAction = null) =>

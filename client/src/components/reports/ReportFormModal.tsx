@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { Loader2 } from 'lucide-react'
 import { submitReport, DESCRIPTION_MAX } from '../../api/reports'
+import { useAuthStore } from '../../store/authStore'
 import { useMapStore } from '../../store/mapStore'
 import {
   FEATURE_LABELS,
@@ -33,6 +34,7 @@ export function ReportFormModal() {
   const setSubmittingReport = useMapStore((s) => s.setSubmittingReport)
   const addReport = useMapStore((s) => s.addReport)
   const showToast = useMapStore((s) => s.showToast)
+  const addMyReportId = useAuthStore((s) => s.addMyReportId)
 
   const location = locations.find((l) => l.id === reportModalLocationId)
 
@@ -86,6 +88,7 @@ export function ReportFormModal() {
       })
 
       addReport(location.id, result.report)
+      addMyReportId(result.report.id)
 
       if (result.moderation.verdict === 'approved') {
         showToast(

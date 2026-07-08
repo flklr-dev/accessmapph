@@ -1,6 +1,9 @@
 import {
   createUserWithEmailAndPassword,
+  EmailAuthProvider,
   GoogleAuthProvider,
+  reauthenticateWithCredential,
+  reauthenticateWithPopup,
   sendEmailVerification,
   signInWithEmailAndPassword,
   signInWithPopup,
@@ -37,6 +40,8 @@ function mapAuthError(error: unknown): string {
       return 'Pop-up was blocked. Allow pop-ups for this site.'
     case 'auth/network-request-failed':
       return 'Network error. Check your connection.'
+    case 'auth/requires-recent-login':
+      return 'For your security, sign in again before deleting your account.'
     default:
       return 'Could not complete sign-in. Please try again.'
   }
@@ -144,12 +149,43 @@ export async function signOutUser() {
 }
 
 /**
- * Permanently delete the account: wipes server data + Firebase Auth user,
- * then clears the local session.
+ * Re-authenticate before destructive actions (account deletion).
+ * Password users must supply their current password; OAuth users get a provider popup.
  */
-export async function deleteAccount() {
+export async function reauthenticateForSensitiveAction(password?: string): Promise<void> {
+  if (!isFirebaseConfigured()) throw new Error('Auth is not configured yet.')
+
+  const user = getFirebaseAuth().currentUser
+  if (!user) throw new Error('Sign in required.')
+
+  try {
+    if (isPasswordUser(user)) {
+      if (!password?.trim()) {
+        throw new Error('Enter your password to confirm this action.')
+      }
+      const email = user.email
+      if (!email) throw new Error('Account email is missing.')
+      const cred = EmailAuthProvider.credential(email, password)
+      await reauthenticateWithCredential(user, cred)
+      return
+    }
+
+    const provider = new GoogleAuthProvider()
+    provider.setCustomParameters({ prompt: 'login' })
+    await reauthenticateWithPopup(user, provider)
+  } catch (error) {
+    throw new Error(mapAuthError(error))
+  }
+}
+
+/**
+ * Permanently delete the account: re-authenticate, wipe server data + Firebase Auth user,
+ * then clear the local session.
+ */
+export async function deleteAccount(password?: string) {
   if (!isFirebaseConfigured()) throw new Error('Auth is not configured yet.')
   try {
+    await reauthenticateForSensitiveAction(password)
     await deleteAccountApi()
     await signOut(getFirebaseAuth())
   } catch (error) {

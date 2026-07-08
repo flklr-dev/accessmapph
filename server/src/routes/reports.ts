@@ -12,15 +12,15 @@ reportsRouter.post(
   requireVerifiedEmail,
   reportRateLimit,
   async (req: AuthenticatedRequest, res) => {
-    const validated = validateSubmitBody(req.body)
-    if (typeof validated === 'string') {
-      res.status(400).json({ error: validated })
-      return
-    }
-
     const userId = req.auth?.uid
     if (!userId) {
       res.status(401).json({ error: 'Sign in required.' })
+      return
+    }
+
+    const validated = validateSubmitBody(req.body, userId)
+    if (typeof validated === 'string') {
+      res.status(400).json({ error: validated })
       return
     }
 

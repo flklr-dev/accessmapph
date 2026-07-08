@@ -64,7 +64,6 @@ export interface LocationJSON {
 export interface ReportJSON {
   id: string
   locationId: string
-  userId?: string
   /** Public first name of the report author (privacy: never full name). */
   authorName?: string | null
   /** Public avatar of the report author, if any (same as leaderboard). */
@@ -177,7 +176,6 @@ const LocationSchema = new Schema<ILocation>(
           ret.reports = (ret.reports as Array<Record<string, unknown>>).map((r) => ({
             id: String(r._id),
             locationId: id,
-            userId: r.userId,
             featureType: r.featureType,
             status: r.status,
             description: r.description,

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { AlertTriangle, Award, Loader2, MapPin, Trash2 } from 'lucide-react'
 import { fetchMyContributions } from '../../api/auth'
 import { fetchLocations } from '../../api/locations'
-import { deleteAccount } from '../../lib/authActions'
+import { deleteAccount, isPasswordUser } from '../../lib/authActions'
 import { useAuthStore } from '../../store/authStore'
 import { useMapStore } from '../../store/mapStore'
 import {
@@ -30,6 +30,7 @@ export function ProfileModal() {
   const profile = useAuthStore((s) => s.profile)
   const firebaseUser = useAuthStore((s) => s.firebaseUser)
   const setProfile = useAuthStore((s) => s.setProfile)
+  const setMyReportIds = useAuthStore((s) => s.setMyReportIds)
   const setSelectedLocation = useMapStore((s) => s.setSelectedLocation)
   const setMobilePanelOpen = useMapStore((s) => s.setMobilePanelOpen)
   const setLocations = useMapStore((s) => s.setLocations)
@@ -40,6 +41,7 @@ export function ProfileModal() {
   const [error, setError] = useState<string | null>(null)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [deleteConfirmText, setDeleteConfirmText] = useState('')
+  const [deletePassword, setDeletePassword] = useState('')
   const [deleting, setDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
 
@@ -56,6 +58,7 @@ export function ProfileModal() {
         if (cancelled) return
         setProfile(data.user)
         setContributions(data.contributions)
+        setMyReportIds(data.contributions.map((c) => c.id))
       } catch (err) {
         if (cancelled) return
         setError(err instanceof Error ? err.message : 'Could not load profile.')
@@ -69,11 +72,12 @@ export function ProfileModal() {
     return () => {
       cancelled = true
     }
-  }, [isOpen, firebaseUser, setProfile])
+  }, [isOpen, firebaseUser, setProfile, setMyReportIds])
 
   const handleClose = () => {
     setShowDeleteConfirm(false)
     setDeleteConfirmText('')
+    setDeletePassword('')
     setDeleteError(null)
     closeProfileModal()
   }
@@ -85,7 +89,7 @@ export function ProfileModal() {
     setDeleteError(null)
 
     try {
-      await deleteAccount()
+      await deleteAccount(isPasswordUser(firebaseUser) ? deletePassword : undefined)
       try {
         const locations = await fetchLocations()
         if (locations.length > 0) setLocations(locations)
@@ -192,6 +196,27 @@ export function ProfileModal() {
               placeholder="DELETE"
             />
 
+            {isPasswordUser(firebaseUser) && (
+              <>
+                <label htmlFor="delete-password" className="block text-xs font-medium text-ink m-0">
+                  Current password
+                </label>
+                <input
+                  id="delete-password"
+                  type="password"
+                  value={deletePassword}
+                  onChange={(e) => {
+                    setDeletePassword(e.target.value)
+                    if (deleteError) setDeleteError(null)
+                  }}
+                  disabled={deleting}
+                  autoComplete="current-password"
+                  className="w-full px-3 py-2 text-sm text-ink bg-white border border-border rounded-md focus:outline-none focus:border-red-500 focus:shadow-[0_0_0_3px_rgba(185,28,28,0.08)]"
+                  placeholder="Your password"
+                />
+              </>
+            )}
+
             {deleteError && (
               <p className="text-sm text-red-500 m-0" role="alert">
                 {deleteError}
@@ -204,6 +229,7 @@ export function ProfileModal() {
                 onClick={() => {
                   setShowDeleteConfirm(false)
                   setDeleteConfirmText('')
+                  setDeletePassword('')
                   setDeleteError(null)
                 }}
                 disabled={deleting}
@@ -214,13 +240,17 @@ export function ProfileModal() {
               <Button
                 variant="primary"
                 onClick={handleDeleteAccount}
-                disabled={deleting || deleteConfirmText !== 'DELETE'}
+                disabled={
+                  deleting ||
+                  deleteConfirmText !== 'DELETE' ||
+                  (isPasswordUser(firebaseUser) && !deletePassword.trim())
+                }
                 className="flex-1 bg-red-500! hover:bg-red-600! focus-visible:ring-red-500!"
               >
                 {deleting ? (
                   <>
                     <Loader2 size={16} className="animate-spin" aria-hidden="true" />
-                    Deleting‚Ä¶
+                    Deletingù
                   </>
                 ) : (
                   'Delete my account'
@@ -291,7 +321,7 @@ export function ProfileModal() {
               role="status"
             >
               <Loader2 size={16} className="animate-spin" aria-hidden="true" />
-              Loading contributions‚Ä¶
+              Loading contributionsù
             </div>
           ) : error ? (
             <p
@@ -321,7 +351,7 @@ export function ProfileModal() {
                           <span className="truncate">{item.locationName}</span>
                         </p>
                         <p className="text-[11px] text-ink-muted m-0 mt-0.5">
-                          {item.locationCity} ¬∑ {FEATURE_LABELS[item.featureType]}
+                          {item.locationCity} ù {FEATURE_LABELS[item.featureType]}
                         </p>
                       </div>
                       <StatusBadge status={item.status} verified={item.verified} />
@@ -354,7 +384,7 @@ export function ProfileModal() {
                         </span>
                       )}
                       <span className="text-[10px] text-gray-400">
-                        {STATUS_LABELS[item.status]} ¬∑ {formatDate(item.createdAt)} ¬∑ {item.upvotes}{' '}
+                        {STATUS_LABELS[item.status]} ù {formatDate(item.createdAt)} ù {item.upvotes}{' '}
                         confirmation{item.upvotes !== 1 ? 's' : ''}
                       </span>
                     </div>

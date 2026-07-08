@@ -1,7 +1,7 @@
 import { type FeatureType, type AccessibilityStatus, type AIVerdict } from '../models/Location.js'
 import { getLocationById, addReportToLocation } from './locationService.js'
 import { recordReportContribution, getTrustStatus, getAuthorsByUids } from './userService.js'
-import { isOwnCloudinaryUrl, MAX_PHOTOS_PER_REPORT } from '../lib/cloudinary.js'
+import { isOwnCloudinaryUrlForUser, MAX_PHOTOS_PER_REPORT } from '../lib/cloudinary.js'
 
 // ---- Tier 1: free, instant rule engine -----------------------------------
 
@@ -202,7 +202,7 @@ async function moderateReport(
 const FEATURE_TYPES = new Set(['ramp', 'elevator', 'restroom', 'parking', 'pathway', 'signage'])
 const REPORT_STATUSES = new Set(['accessible', 'partial', 'inaccessible'])
 
-export function validateSubmitBody(body: unknown): SubmitReportBody | string {
+export function validateSubmitBody(body: unknown, userId: string): SubmitReportBody | string {
   if (!body || typeof body !== 'object') return 'Invalid request body.'
 
   const { locationId, featureType, status, description, photos } = body as Record<string, unknown>
@@ -231,9 +231,8 @@ export function validateSubmitBody(body: unknown): SubmitReportBody | string {
     if (photos.length > MAX_PHOTOS_PER_REPORT) {
       return `A report can have at most ${MAX_PHOTOS_PER_REPORT} photos.`
     }
-    // Defense in depth: the confirm-upload step already verified these belong
-    // to us, but we never trust client-supplied URLs at write time either.
-    if (photos.some((p) => !isOwnCloudinaryUrl(p))) {
+    // Defense in depth: each photo must belong to this user's upload folder.
+    if (photos.some((p) => !isOwnCloudinaryUrlForUser(p, userId))) {
       return 'One or more photos are invalid.'
     }
     validatedPhotos = photos as string[]
@@ -283,7 +282,7 @@ export async function processReportSubmission(
   }
 
   if (moderation.verdict !== 'flagged') {
-    await recordReportContribution(userId)
+    await recordReportContribution(userId, { verdict: moderation.verdict })
   }
 
   const newReport = updatedLocation.reports[0] as ReportOutput

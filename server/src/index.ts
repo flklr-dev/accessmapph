@@ -9,9 +9,13 @@ import { reportsRouter } from './routes/reports.js'
 import { authRouter } from './routes/auth.js'
 import { uploadsRouter } from './routes/uploads.js'
 import { leaderboardRouter } from './routes/leaderboard.js'
+import { securityHeaders } from './middleware/security.js'
 
 const app = express()
 const PORT = process.env.PORT ?? 3001
+
+app.disable('x-powered-by')
+app.set('trust proxy', 1)
 
 const allowedOrigins = [
   'http://localhost:5173',
@@ -19,6 +23,7 @@ const allowedOrigins = [
   process.env.CLIENT_URL,
 ].filter(Boolean) as string[]
 
+app.use(...securityHeaders)
 app.use(
   cors({
     origin: allowedOrigins,

@@ -68,6 +68,7 @@ export async function upsertUserFromToken(token: DecodedIdToken): Promise<IUser>
         points: 0,
         level: 'newcomer',
         reportCount: 0,
+        trustEligibleCount: 0,
       },
     },
     { upsert: true, new: true, runValidators: true },
@@ -116,15 +117,24 @@ export async function getAuthorsByUids(uids: (string | undefined)[]): Promise<Ma
   )
 }
 
-export async function recordReportContribution(firebaseUid: string): Promise<void> {
+export async function recordReportContribution(
+  firebaseUid: string,
+  options: { verdict: 'approved' | 'pending' | 'flagged' },
+): Promise<void> {
   const user = await User.findOne({ firebaseUid })
   if (!user) return
 
-  user.reportCount += 1
-  user.points += 10
-  user.lastReportAt = new Date()
-  user.level = levelForPoints(user.points)
+  if (options.verdict !== 'flagged') {
+    user.reportCount += 1
+    user.points += options.verdict === 'approved' ? 10 : 2
+    user.lastReportAt = new Date()
+  }
 
+  if (options.verdict === 'approved') {
+    user.trustEligibleCount += 1
+  }
+
+  user.level = levelForPoints(user.points)
   await user.save()
 }
 
@@ -134,10 +144,14 @@ export async function getTrustStatus(firebaseUid: string): Promise<TrustStatus> 
   if (!user) return { autoApprove: false, reportCount: 0, flaggedCount: 0 }
 
   const autoApprove =
-    user.reportCount >= AUTO_APPROVE_MIN_REPORTS &&
+    user.trustEligibleCount >= AUTO_APPROVE_MIN_REPORTS &&
     user.flaggedCount <= MAX_FLAGS_FOR_AUTO_APPROVE
 
-  return { autoApprove, reportCount: user.reportCount, flaggedCount: user.flaggedCount }
+  return {
+    autoApprove,
+    reportCount: user.reportCount,
+    flaggedCount: user.flaggedCount,
+  }
 }
 
 /** Tier 3: community flagged this user's report enough to hide it. Demotes trust. */
@@ -153,10 +167,16 @@ export async function recordReportFlag(firebaseUid: string): Promise<void> {
 }
 
 /** Tier 3: community upvotes confirmed this report. Small trust bonus. */
-export async function recordReportVerified(firebaseUid: string): Promise<void> {
+export async function recordReportVerified(
+  firebaseUid: string,
+  countTowardTrust = true,
+): Promise<void> {
   const user = await User.findOne({ firebaseUid })
   if (!user) return
 
+  if (countTowardTrust) {
+    user.trustEligibleCount += 1
+  }
   user.points += 5
   user.level = levelForPoints(user.points)
 
@@ -284,12 +304,13 @@ export async function deleteUserAccount(firebaseUid: string): Promise<void> {
 
   await Location.updateMany({ createdBy: firebaseUid }, { $set: { createdBy: null } })
 
+  // Delete Firebase Auth first so a failed auth delete leaves the Mongo profile intact for retry.
+  await deleteFirebaseAuthUser(firebaseUid)
+
   const deleted = await User.deleteOne({ firebaseUid })
   if (deleted.deletedCount === 0) {
     throw new Error('USER_NOT_FOUND')
   }
-
-  await deleteFirebaseAuthUser(firebaseUid)
 }
 
 export { toPublicUser }

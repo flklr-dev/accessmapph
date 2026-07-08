@@ -65,13 +65,11 @@ export async function getAllLocations() {
       geohash: loc.geohash,
       placeKey: loc.placeKey,
       source: loc.source,
-      createdBy: loc.createdBy ?? null,
       reports: loc.reports.map((r) => {
         const author = r.userId ? authorMap.get(r.userId) : undefined
         return {
           id: r._id.toString(),
           locationId: loc._id.toString(),
-          userId: r.userId,
           authorName: r.userId ? author?.name ?? 'Contributor' : null,
           authorPhotoURL: author?.photoURL ?? null,
           featureType: r.featureType,
@@ -327,7 +325,6 @@ const FLAG_HIDE_THRESHOLD = 3
 export interface PublicReport {
   id: string
   locationId: string
-  userId?: string
   authorName?: string | null
   authorPhotoURL?: string | null
   featureType: string
@@ -352,7 +349,6 @@ async function toPublicReport(locationId: string, r: IReport): Promise<PublicRep
   return {
     id: r._id.toString(),
     locationId,
-    userId: r.userId,
     authorName: r.userId ? author?.name ?? 'Contributor' : null,
     authorPhotoURL: author?.photoURL ?? null,
     featureType: r.featureType,
@@ -385,6 +381,7 @@ export async function voteOnReport(
 
   const wasVerified = report.verified
   const wasFlagged = report.aiVerdict === 'flagged'
+  const wasPending = report.aiVerdict === 'pending'
   const wasInUp = report.upvoterIds.includes(userId)
   const wasInDown = report.downvoterIds.includes(userId)
 
@@ -413,7 +410,7 @@ export async function voteOnReport(
     if (!wasFlagged && report.aiVerdict === 'flagged') {
       await recordReportFlag(report.userId)
     } else if (!wasVerified && report.verified) {
-      await recordReportVerified(report.userId)
+      await recordReportVerified(report.userId, wasPending)
     }
   }
 

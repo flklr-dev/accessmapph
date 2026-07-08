@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { onAuthStateChanged } from 'firebase/auth'
-import { fetchCurrentUser } from '../api/auth'
+import { fetchCurrentUser, fetchMyContributions } from '../api/auth'
 import { setAuthSessionUser } from '../lib/authSession'
 import { getFirebaseAuth, isFirebaseConfigured } from '../lib/firebase'
 import { useAuthStore } from '../store/authStore'
@@ -9,6 +9,7 @@ import { useAuthStore } from '../store/authStore'
 export function useAuthBootstrap() {
   const setFirebaseUser = useAuthStore((s) => s.setFirebaseUser)
   const setProfile = useAuthStore((s) => s.setProfile)
+  const setMyReportIds = useAuthStore((s) => s.setMyReportIds)
   const setLoading = useAuthStore((s) => s.setLoading)
   const runPendingAction = useAuthStore((s) => s.runPendingAction)
 
@@ -27,14 +28,21 @@ export function useAuthBootstrap() {
 
       if (!user) {
         setProfile(null)
+        setMyReportIds([])
         setLoading(false)
         return
       }
 
       try {
-        const profile = await fetchCurrentUser()
+        const [profile, contributionsResult] = await Promise.all([
+          fetchCurrentUser(),
+          fetchMyContributions().catch(() => null),
+        ])
         if (!cancelled) {
           setProfile(profile)
+          if (contributionsResult) {
+            setMyReportIds(contributionsResult.contributions.map((c) => c.id))
+          }
           runPendingAction()
         }
       } catch {
@@ -48,5 +56,5 @@ export function useAuthBootstrap() {
       cancelled = true
       unsubscribe()
     }
-  }, [setFirebaseUser, setProfile, setLoading, runPendingAction])
+  }, [setFirebaseUser, setProfile, setMyReportIds, setLoading, runPendingAction])
 }

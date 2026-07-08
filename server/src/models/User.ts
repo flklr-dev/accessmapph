@@ -12,6 +12,8 @@ export interface IUser extends Document {
   level: UserLevel
   city: string | null
   reportCount: number
+  /** Reports that count toward trust-based auto-approval (approved or community-verified). */
+  trustEligibleCount: number
   /** Times this user's reports were flagged/hidden by the community. Demotes trust. */
   flaggedCount: number
   lastReportAt: Date | null
@@ -45,6 +47,7 @@ const UserSchema = new Schema<IUser>(
     },
     city: { type: String, default: null, trim: true },
     reportCount: { type: Number, default: 0, min: 0 },
+    trustEligibleCount: { type: Number, default: 0, min: 0 },
     flaggedCount: { type: Number, default: 0, min: 0 },
     lastReportAt: { type: Date, default: null },
   },
