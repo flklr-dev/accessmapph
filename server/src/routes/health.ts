@@ -7,6 +7,19 @@ export const healthRouter = Router()
 
 const startedAt = Date.now()
 
+/** Fast liveness probe — no DB/Redis calls. Use for Render deploy health checks. */
+healthRouter.get('/live', (_req, res) => {
+  res.status(200).json({
+    status: 'ok',
+    service: 'accessmapph-api',
+    uptimeSec: Math.floor(process.uptime()),
+  })
+})
+
+healthRouter.head('/live', (_req, res) => {
+  res.status(200).end()
+})
+
 healthRouter.get('/', async (_req, res) => {
   const mongoOk = isMongoConnected()
   const redisConfigured = isRedisConfigured()

@@ -43,6 +43,14 @@ app.use(express.json({ limit: '32kb' }))
 /** Private/mutating responses stay uncached unless a route overrides. */
 app.use(noStore())
 
+/** Render's default health probe hits `/` with HEAD — must return 2xx. */
+app.get('/', (_req, res) => {
+  res.status(200).json({ ok: true, service: 'accessmapph-api' })
+})
+app.head('/', (_req, res) => {
+  res.status(200).end()
+})
+
 app.use('/api/health', healthRouter)
 app.use('/api/auth', authRouter)
 app.use('/api/locations', locationsRouter)
@@ -53,6 +61,16 @@ app.use('/api/leaderboard', leaderboardRouter)
 app.use(errorHandler)
 
 async function start() {
+  const host = '0.0.0.0'
+
+  // Open the port immediately so Render's health probe can succeed while DB/Redis connect.
+  await new Promise<void>((resolve) => {
+    app.listen(Number(PORT), host, () => {
+      console.log(`AccessMap PH API listening on ${host}:${PORT}`)
+      resolve()
+    })
+  })
+
   try {
     initFirebaseAdmin()
     const redis = await initRedis()
@@ -61,9 +79,7 @@ async function start() {
     initAuthSessionCache(redis)
     await connectDB()
     initJobWorkers()
-    app.listen(PORT, () => {
-      console.log(`AccessMap PH API running on http://localhost:${PORT}`)
-    })
+    console.log('[startup] Firebase, MongoDB, Redis, and job workers ready')
   } catch (error) {
     logServerError('startup_failed', error)
     process.exit(1)
