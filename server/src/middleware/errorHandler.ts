@@ -1,4 +1,5 @@
 import type { NextFunction, Request, Response } from 'express'
+import { applyCorsHeaders } from '../lib/corsConfig.js'
 import { logServerError } from './requestLogger.js'
 
 const isProduction = process.env.NODE_ENV === 'production'
@@ -11,6 +12,8 @@ export function errorHandler(
   _next: NextFunction,
 ): void {
   if (res.headersSent) return
+
+  applyCorsHeaders(req, res)
 
   logServerError('unhandled_route_error', err, {
     method: req.method,

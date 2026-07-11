@@ -1,4 +1,5 @@
 import type { NextFunction, Request, Response } from 'express'
+import { applyCorsHeaders } from '../lib/corsConfig.js'
 import { isFirebaseReady } from '../lib/firebase.js'
 import { resolveAuthFromToken } from '../services/authSessionService.js'
 import type { AuthIdentity } from '../services/userService.js'
@@ -30,12 +31,14 @@ export async function requireAuth(
 ): Promise<void> {
   try {
     if (!isFirebaseReady()) {
+      applyCorsHeaders(req, res)
       res.status(503).json({ error: 'Authentication is not configured on the server.' })
       return
     }
 
     const token = extractBearerToken(req.headers.authorization)
     if (!token) {
+      applyCorsHeaders(req, res)
       res.status(401).json({ error: 'Sign in required.' })
       return
     }
@@ -49,6 +52,7 @@ export async function requireAuth(
     next()
   } catch (error) {
     const message = error instanceof Error ? error.message : ''
+    applyCorsHeaders(req, res)
     if (message === 'EMAIL_REQUIRED') {
       res.status(403).json({ error: 'A verified email is required.' })
       return

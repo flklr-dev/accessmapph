@@ -1,4 +1,5 @@
 import type { CorsOptions } from 'cors'
+import type { Request, Response } from 'express'
 
 const LOCAL_ORIGINS = ['http://localhost:5173', 'http://localhost:5174']
 
@@ -12,62 +13,62 @@ function parseClientOrigins(): string[] {
     .filter(Boolean)
 }
 
-function isVercelPreview(hostname: string): boolean {
+function isVercelHost(hostname: string): boolean {
   return hostname === 'vercel.app' || hostname.endsWith('.vercel.app')
 }
 
-/** Allow all *.vercel.app when any configured CLIENT_URL is on Vercel (preview deploys). */
-function allowVercelPreviews(clientOrigins: string[]): boolean {
-  return clientOrigins.some((origin) => {
+function isOriginAllowed(origin: string): boolean {
+  const normalized = normalizeOrigin(origin)
+  const allowed = new Set([...LOCAL_ORIGINS, ...parseClientOrigins()])
+
+  if (allowed.has(normalized)) return true
+
+  // Production Vercel deploys — avoids broken auth when CLIENT_URL is misconfigured.
+  if (process.env.NODE_ENV === 'production') {
     try {
-      return isVercelPreview(new URL(origin).hostname)
+      if (isVercelHost(new URL(origin).hostname)) return true
     } catch {
-      return false
+      // invalid origin
     }
-  })
+  }
+
+  return false
 }
 
 export function buildCorsOptions(): CorsOptions {
   const clientOrigins = parseClientOrigins()
-  const allowed = new Set([...LOCAL_ORIGINS, ...clientOrigins])
-  const vercelPreviews = allowVercelPreviews(clientOrigins)
 
   if (process.env.NODE_ENV === 'production' && clientOrigins.length === 0) {
     console.warn(
-      '[cors] CLIENT_URL is not set — browser requests from Vercel will be blocked. ' +
-        'Set CLIENT_URL=https://accessmapph.vercel.app on Render and redeploy.',
+      '[cors] CLIENT_URL is not set — allowing *.vercel.app in production. ' +
+        'Set CLIENT_URL for custom domains.',
     )
   } else if (clientOrigins.length > 0) {
-    console.log(`[cors] allowed origins: ${[...allowed].join(', ')}${vercelPreviews ? ' (+ *.vercel.app previews)' : ''}`)
+    console.log(`[cors] CLIENT_URL origins: ${clientOrigins.join(', ')}`)
   }
 
   return {
     origin(origin, callback) {
-      // curl, server-to-server, same-origin
-      if (!origin) {
+      if (!origin || isOriginAllowed(origin)) {
         callback(null, true)
         return
       }
-
-      const normalized = normalizeOrigin(origin)
-      if (allowed.has(normalized)) {
-        callback(null, true)
-        return
-      }
-
-      if (vercelPreviews) {
-        try {
-          if (isVercelPreview(new URL(origin).hostname)) {
-            callback(null, true)
-            return
-          }
-        } catch {
-          // invalid origin URL
-        }
-      }
-
       console.warn(`[cors] blocked origin: ${origin}`)
       callback(null, false)
     },
+    methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-Id'],
+    exposedHeaders: ['X-Request-Id', 'Retry-After'],
+    optionsSuccessStatus: 204,
+    maxAge: 86_400,
+  }
+}
+
+/** Ensure error responses still include CORS headers for browser clients. */
+export function applyCorsHeaders(req: Request, res: Response): void {
+  const origin = req.headers.origin
+  if (typeof origin === 'string' && isOriginAllowed(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin)
+    res.setHeader('Vary', 'Origin')
   }
 }
