@@ -18,6 +18,7 @@ import { noStore } from './middleware/httpCache.js'
 import { requestLogger, logServerError } from './middleware/requestLogger.js'
 import { errorHandler } from './middleware/errorHandler.js'
 import { initJobWorkers } from './jobs/index.js'
+import { buildCorsOptions } from './lib/corsConfig.js'
 
 const app = express()
 const PORT = process.env.PORT ?? 3001
@@ -34,20 +35,10 @@ app.head('/health', (_req, res) => sendLivenessHead(res))
 app.get('/', (_req, res) => sendLiveness(res))
 app.head('/', (_req, res) => sendLivenessHead(res))
 
-const allowedOrigins = [
-  'http://localhost:5173',
-  'http://localhost:5174',
-  ...(process.env.CLIENT_URL?.split(',').map((origin) => origin.trim()).filter(Boolean) ?? []),
-]
-
 app.use(...securityHeaders)
 app.use(compression({ threshold: 1024 }))
 app.use(requestLogger)
-app.use(
-  cors({
-    origin: allowedOrigins,
-  }),
-)
+app.use(cors(buildCorsOptions()))
 app.use(express.json({ limit: '32kb' }))
 /** Private/mutating responses stay uncached unless a route overrides. */
 app.use(noStore())
