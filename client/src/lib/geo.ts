@@ -24,9 +24,13 @@ export const PH_BOUNDS = {
  * `fitBounds`/`flyToBounds` zooms out just enough to show the whole
  * country without cropping, regardless of viewport aspect ratio.
  */
+/**
+ * Framing box for the country-wide overview — full archipelago so
+ * Luzon, Visayas, and Mindanao all fit in the default view.
+ */
 export const PH_MAP_BOUNDS: [[number, number], [number, number]] = [
-  [5.5, 117.5],
-  [19.8, 126.2],
+  [4.5, 116.5],
+  [21.0, 127.0],
 ]
 
 export function isWithinPhilippinesBounds(lat: number, lng: number): boolean {

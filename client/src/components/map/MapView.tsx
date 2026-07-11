@@ -15,9 +15,9 @@ import { MapSearchBar } from './MapSearchBar'
 import { MapPinHint } from './MapPinHint'
 import { MapLeaderboardButton } from './MapLeaderboardButton'
 
-const OVERVIEW_PADDING = L.point(40, 40)
-/** Extra zoom on top of fitBounds — higher = more zoomed-in default (less empty ocean). */
-const OVERVIEW_ZOOM_NUDGE = 1.1
+const OVERVIEW_PADDING = L.point(20, 20)
+/** Slight zoom past fitBounds — keep small so Luzon → Mindanao still fits. */
+const OVERVIEW_ZOOM_NUDGE = 0.25
 const SPACE_FLY_DURATION = 0.65
 
 function getOverviewBounds() {
