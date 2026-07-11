@@ -1,6 +1,8 @@
 import type { DecodedIdToken } from 'firebase-admin/auth'
+import mongoose from 'mongoose'
 import { User, type IUser, type UserJSON, type UserLevel } from '../models/User.js'
 import { Location } from '../models/Location.js'
+import { Report } from '../models/Report.js'
 import { deleteFirebaseAuthUser } from '../lib/firebase.js'
 import { destroyUpload, publicIdFromCloudinaryUrl } from '../lib/cloudinary.js'
 import { toPublicFirstName } from '../lib/displayName.js'
@@ -201,43 +203,43 @@ export interface UserContribution {
 
 /** All reports authored by this user, newest first. */
 export async function getUserContributions(firebaseUid: string): Promise<UserContribution[]> {
-  const locations = await Location.find(
-    { 'reports.userId': firebaseUid },
-    { name: 1, city: 1, reports: 1 },
-  ).lean()
+  const reports = await Report.find({ userId: firebaseUid })
+    .sort({ createdAt: -1 })
+    .lean()
 
-  const contributions: UserContribution[] = []
+  if (reports.length === 0) return []
 
-  for (const loc of locations) {
-    const locationId = loc._id.toString()
-    for (const report of loc.reports ?? []) {
-      if (report.userId !== firebaseUid) continue
-      contributions.push({
-        id: report._id.toString(),
-        locationId,
-        locationName: loc.name,
-        locationCity: loc.city,
-        featureType: report.featureType,
-        status: report.status,
-        description: report.description,
-        photos: Array.isArray(report.photos) ? report.photos : [],
-        upvotes: report.upvotes ?? 0,
-        downvotes: report.downvotes ?? 0,
-        verified: report.verified ?? false,
-        aiVerdict: report.aiVerdict ?? 'pending',
-        createdAt:
-          report.createdAt instanceof Date
-            ? report.createdAt.toISOString()
-            : String(report.createdAt ?? new Date().toISOString()),
-      })
-    }
-  }
+  const locationIds = [...new Set(reports.map((r) => String(r.locationId)))]
+  const locations = await Location.find({ _id: { $in: locationIds } })
+    .select('name city')
+    .lean()
 
-  contributions.sort(
-    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+  const locationMap = new Map(
+    locations.map((loc) => [loc._id.toString(), { name: loc.name, city: loc.city }]),
   )
 
-  return contributions
+  return reports.map((report) => {
+    const locationId = String(report.locationId)
+    const loc = locationMap.get(locationId)
+    return {
+      id: report._id.toString(),
+      locationId,
+      locationName: loc?.name ?? 'Unknown location',
+      locationCity: loc?.city ?? 'Unknown',
+      featureType: report.featureType,
+      status: report.status,
+      description: report.description,
+      photos: Array.isArray(report.photos) ? report.photos : [],
+      upvotes: report.upvotes ?? 0,
+      downvotes: report.downvotes ?? 0,
+      verified: report.verified ?? false,
+      aiVerdict: report.aiVerdict ?? 'pending',
+      createdAt:
+        report.createdAt instanceof Date
+          ? report.createdAt.toISOString()
+          : String(report.createdAt ?? new Date().toISOString()),
+    }
+  })
 }
 
 /**
@@ -249,15 +251,11 @@ export async function getUserContributions(firebaseUid: string): Promise<UserCon
  * - Deletes the MongoDB profile and Firebase Auth user
  */
 export async function deleteUserAccount(firebaseUid: string): Promise<void> {
-  const locationsWithReports = await Location.find({ 'reports.userId': firebaseUid }).lean()
+  const ownReports = await Report.find({ userId: firebaseUid }).lean()
 
   const photoUrls: string[] = []
-  for (const loc of locationsWithReports) {
-    for (const report of loc.reports ?? []) {
-      if (report.userId === firebaseUid) {
-        photoUrls.push(...(Array.isArray(report.photos) ? report.photos : []))
-      }
-    }
+  for (const report of ownReports) {
+    photoUrls.push(...(Array.isArray(report.photos) ? report.photos : []))
   }
 
   for (const url of photoUrls) {
@@ -265,41 +263,63 @@ export async function deleteUserAccount(firebaseUid: string): Promise<void> {
     if (publicId) await destroyUpload(publicId)
   }
 
-  await Location.updateMany(
-    { 'reports.userId': firebaseUid },
-    { $pull: { reports: { userId: firebaseUid } } },
-  )
+  const ownLocationIds = [...new Set(ownReports.map((r) => String(r.locationId)))]
+  await Report.deleteMany({ userId: firebaseUid })
 
-  await Location.deleteMany({
-    createdBy: firebaseUid,
-    source: 'community',
-    reports: { $size: 0 },
-  })
+  // Remove community pins this user created that now have zero reports.
+  if (ownLocationIds.length > 0) {
+    const remainingCounts = await Report.aggregate<{ _id: unknown; count: number }>([
+      {
+        $match: {
+          locationId: {
+            $in: ownLocationIds.map((id) => new mongoose.Types.ObjectId(id)),
+          },
+        },
+      },
+      { $group: { _id: '$locationId', count: { $sum: 1 } } },
+    ])
+    const stillHasReports = new Set(remainingCounts.map((r) => String(r._id)))
+    const emptyIds = ownLocationIds.filter((id) => !stillHasReports.has(id))
+    if (emptyIds.length > 0) {
+      await Location.deleteMany({
+        _id: { $in: emptyIds },
+        createdBy: firebaseUid,
+        source: 'community',
+      })
+    }
+  }
 
-  const voterLocations = await Location.find({
+  // Scrub this user's votes/flags, then recompute counts only on touched docs.
+  const votedReportIds = await Report.find({
     $or: [
-      { 'reports.upvoterIds': firebaseUid },
-      { 'reports.downvoterIds': firebaseUid },
-      { 'reports.flaggerIds': firebaseUid },
+      { upvoterIds: firebaseUid },
+      { downvoterIds: firebaseUid },
+      { flaggerIds: firebaseUid },
     ],
   })
+    .select('_id')
+    .lean()
 
-  for (const loc of voterLocations) {
-    let dirty = false
-    for (const report of loc.reports) {
-      const hadUp = report.upvoterIds.includes(firebaseUid)
-      const hadDown = report.downvoterIds.includes(firebaseUid)
-      const hadFlag = report.flaggerIds.includes(firebaseUid)
-      if (!hadUp && !hadDown && !hadFlag) continue
-
-      report.upvoterIds = report.upvoterIds.filter((id: string) => id !== firebaseUid)
-      report.downvoterIds = report.downvoterIds.filter((id: string) => id !== firebaseUid)
-      report.flaggerIds = report.flaggerIds.filter((id: string) => id !== firebaseUid)
-      report.upvotes = report.upvoterIds.length
-      report.downvotes = report.downvoterIds.length
-      dirty = true
-    }
-    if (dirty) await loc.save()
+  if (votedReportIds.length > 0) {
+    const ids = votedReportIds.map((r) => r._id)
+    await Report.updateMany(
+      { _id: { $in: ids } },
+      {
+        $pull: {
+          upvoterIds: firebaseUid,
+          downvoterIds: firebaseUid,
+          flaggerIds: firebaseUid,
+        },
+      },
+    )
+    await Report.updateMany({ _id: { $in: ids } }, [
+      {
+        $set: {
+          upvotes: { $size: { $ifNull: ['$upvoterIds', []] } },
+          downvotes: { $size: { $ifNull: ['$downvoterIds', []] } },
+        },
+      },
+    ])
   }
 
   await Location.updateMany({ createdBy: firebaseUid }, { $set: { createdBy: null } })

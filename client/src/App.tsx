@@ -10,10 +10,8 @@ import { MobilePanel } from './components/layout/MobilePanel'
 import { MapView } from './components/map/MapView'
 import { ReportFormModal } from './components/reports/ReportFormModal'
 import { FindPlaceModal } from './components/reports/FindPlaceModal'
-import { LocationConfirmModal } from './components/reports/LocationConfirmModal'
 import { PinConfirmModal } from './components/map/PinConfirmModal'
 import { ToastContainer } from './components/ui/Toast'
-import { CommandPalette } from './components/ui/CommandPalette'
 import { LocationPanel } from './components/layout/LocationPanel'
 
 const spaceGradients = {
@@ -79,12 +77,10 @@ export default function App() {
         </div>
       </div>
 
-      <CommandPalette />
       <AuthModal />
       <ProfileModal />
       <LeaderboardModal />
       <FindPlaceModal />
-      <LocationConfirmModal />
       <ReportFormModal />
       <PinConfirmModal />
       <ToastContainer />

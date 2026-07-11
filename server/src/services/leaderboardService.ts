@@ -1,4 +1,4 @@
-import { Location } from '../models/Location.js'
+import { Report } from '../models/Report.js'
 import { User, type UserLevel } from '../models/User.js'
 import { toPublicFirstName } from '../lib/displayName.js'
 
@@ -105,22 +105,27 @@ async function getCityLeaderboard(
   limit: number,
 ): Promise<LeaderboardResult> {
   const pattern = CITY_PATTERNS[city]
-  const locations = await Location.find(
-    { city: pattern },
-    { reports: 1 },
-  ).lean()
 
-  const reportCounts = new Map<string, number>()
+  // Aggregate reports → locations (city filter) → count per author.
+  // Avoids loading every location document's embedded report array into memory.
+  const counts = await Report.aggregate<{ _id: string; cityReports: number }>([
+    { $match: { userId: { $exists: true, $ne: null }, aiVerdict: { $ne: 'flagged' } } },
+    {
+      $lookup: {
+        from: 'locations',
+        localField: 'locationId',
+        foreignField: '_id',
+        as: 'location',
+      },
+    },
+    { $unwind: '$location' },
+    { $match: { 'location.city': pattern } },
+    { $group: { _id: '$userId', cityReports: { $sum: 1 } } },
+  ])
 
-  for (const loc of locations) {
-    for (const report of loc.reports ?? []) {
-      if (!report.userId) continue
-      if (report.aiVerdict === 'flagged') continue
-      reportCounts.set(report.userId, (reportCounts.get(report.userId) ?? 0) + 1)
-    }
-  }
-
+  const reportCounts = new Map(counts.map((c) => [c._id, c.cityReports]))
   const uids = [...reportCounts.keys()]
+
   if (uids.length === 0) {
     return {
       city,

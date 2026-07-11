@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { 
-  Search, 
   ChevronDown, 
   ChevronRight, 
   Folder, 
@@ -45,7 +44,6 @@ export function Sidebar() {
   const disabilityFilters = useMapStore((s) => s.disabilityFilters)
   const toggleDisabilityFilter = useMapStore((s) => s.toggleDisabilityFilter)
   
-  const setCommandPaletteOpen = useMapStore((s) => s.setCommandPaletteOpen)
   const clearFilters = useMapStore((s) => s.clearFilters)
 
   const filteredLocations = useFilteredLocations()
@@ -67,26 +65,13 @@ export function Sidebar() {
       className="flex flex-col h-full w-full bg-[#1C1C1C] text-[#E8E8E8] select-none font-sans"
       aria-label="Arc Sidebar navigation"
     >
-      {/* Top Header & Search bar (styled like Arc command search) */}
-      <div className="p-4 shrink-0 flex flex-col gap-3">
-        <div className="flex items-center gap-2">
-          <LogoMark size={20} className="w-5 h-5" />
-          <span className="font-display font-extrabold text-[15px] tracking-tight bg-gradient-to-r from-white to-[#E8E8E8]/70 bg-clip-text text-transparent flex-1">
-            AccessMap PH
-          </span>
-          <UserMenu variant="dark" />
-        </div>
-
-        {/* Command bar trigger input */}
-        <button
-          type="button"
-          onClick={() => setCommandPaletteOpen(true)}
-          className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs bg-white/5 border border-white/10 hover:bg-white/10 hover:border-white/20 rounded-md cursor-pointer text-[#888888] focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-2 min-h-[2.5rem] transition-all"
-        >
-          <Search size={14} className="shrink-0" />
-          <span className="flex-1 truncate">Search or press ⌘K</span>
-          <span className="text-[10px] bg-white/10 border border-white/5 px-1 py-0.5 rounded-sm">/</span>
-        </button>
+      {/* Top Header */}
+      <div className="p-4 shrink-0 flex items-center gap-2">
+        <LogoMark size={20} className="w-5 h-5" />
+        <span className="font-display font-extrabold text-[15px] tracking-tight bg-gradient-to-r from-white to-[#E8E8E8]/70 bg-clip-text text-transparent flex-1">
+          AccessMap PH
+        </span>
+        <UserMenu variant="dark" />
       </div>
 
       {/* Middle Scrollable Section */}

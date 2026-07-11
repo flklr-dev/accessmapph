@@ -1,4 +1,4 @@
-import { SlidersHorizontal, Search } from 'lucide-react'
+import { SlidersHorizontal } from 'lucide-react'
 import { useMapStore } from '../../store/mapStore'
 import { countActiveFilters } from '../../store/selectors'
 import { UserMenu } from '../auth/UserMenu'
@@ -10,17 +10,8 @@ export function Header() {
   const disabilityFilters = useMapStore((s) => s.disabilityFilters)
   const showMobileFilters = useMapStore((s) => s.showMobileFilters)
   const setShowMobileFilters = useMapStore((s) => s.setShowMobileFilters)
-  const setCommandPaletteOpen = useMapStore((s) => s.setCommandPaletteOpen)
-  const activeSpace = useMapStore((s) => s.activeSpace)
 
   const activeFilterCount = countActiveFilters(featureFilters, disabilityFilters)
-
-  const spaceNames = {
-    all: 'All Regions',
-    manila: 'Metro Manila',
-    cebu: 'Cebu City',
-    davao: 'Davao City',
-  }
 
   return (
     <header className="md:hidden fixed top-1.5 left-1.5 right-1.5 z-header h-14 bg-canvas/95 backdrop-blur-md border-b border-border flex items-center justify-between gap-3 px-4 rounded-t-lg shadow-sm">
@@ -34,15 +25,6 @@ export function Header() {
           AccessMap
         </span>
       </a>
-
-      <button
-        type="button"
-        onClick={() => setCommandPaletteOpen(true)}
-        className="flex-1 max-w-[160px] xs:max-w-xs flex items-center gap-2 px-3 py-1.5 text-left text-xs bg-surface-1 border border-border rounded-md text-ink-muted hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-primary min-h-9 cursor-pointer"
-      >
-        <Search size={13} className="text-gray-400 shrink-0" />
-        <span className="truncate flex-1">Search {spaceNames[activeSpace]}...</span>
-      </button>
 
       <div className="flex items-center gap-1.5 shrink-0">
         <button

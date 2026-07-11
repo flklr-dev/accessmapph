@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { AlertTriangle, Award, Loader2, MapPin, Trash2 } from 'lucide-react'
 import { fetchMyContributions } from '../../api/auth'
-import { fetchLocations } from '../../api/locations'
+import { fetchLocationById, fetchLocations } from '../../api/locations'
 import { deleteAccount, isPasswordUser } from '../../lib/authActions'
 import { useAuthStore } from '../../store/authStore'
 import { useMapStore } from '../../store/mapStore'
@@ -91,8 +91,8 @@ export function ProfileModal() {
     try {
       await deleteAccount(isPasswordUser(firebaseUser) ? deletePassword : undefined)
       try {
-        const locations = await fetchLocations()
-        if (locations.length > 0) setLocations(locations)
+        const locations = await fetchLocations({ city: useMapStore.getState().activeSpace })
+        setLocations(locations)
       } catch {
         // Map will refresh on next load
       }
@@ -105,8 +105,19 @@ export function ProfileModal() {
     }
   }
 
-  const openLocation = (locationId: string) => {
-    setSelectedLocation(locationId)
+  const openLocation = async (locationId: string) => {
+    const existing = useMapStore.getState().locations.find((l) => l.id === locationId)
+    if (!existing) {
+      try {
+        const detail = await fetchLocationById(locationId)
+        useMapStore.getState().upsertLocation({ ...detail, reportsLoaded: true })
+      } catch {
+        showToast('That location is not available right now.', 'error')
+        return
+      }
+    } else {
+      setSelectedLocation(locationId)
+    }
     setMobilePanelOpen(true)
     closeProfileModal()
   }
@@ -250,7 +261,7 @@ export function ProfileModal() {
                 {deleting ? (
                   <>
                     <Loader2 size={16} className="animate-spin" aria-hidden="true" />
-                    Deletingù
+                    Deleting?
                   </>
                 ) : (
                   'Delete my account'
@@ -321,7 +332,7 @@ export function ProfileModal() {
               role="status"
             >
               <Loader2 size={16} className="animate-spin" aria-hidden="true" />
-              Loading contributionsù
+              Loading contributions?
             </div>
           ) : error ? (
             <p
@@ -351,7 +362,7 @@ export function ProfileModal() {
                           <span className="truncate">{item.locationName}</span>
                         </p>
                         <p className="text-[11px] text-ink-muted m-0 mt-0.5">
-                          {item.locationCity} ù {FEATURE_LABELS[item.featureType]}
+                          {item.locationCity} ? {FEATURE_LABELS[item.featureType]}
                         </p>
                       </div>
                       <StatusBadge status={item.status} verified={item.verified} />
@@ -384,7 +395,7 @@ export function ProfileModal() {
                         </span>
                       )}
                       <span className="text-[10px] text-gray-400">
-                        {STATUS_LABELS[item.status]} ù {formatDate(item.createdAt)} ù {item.upvotes}{' '}
+                        {STATUS_LABELS[item.status]} ? {formatDate(item.createdAt)} ? {item.upvotes}{' '}
                         confirmation{item.upvotes !== 1 ? 's' : ''}
                       </span>
                     </div>

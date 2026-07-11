@@ -6,26 +6,6 @@ export type AIVerdict = 'approved' | 'flagged' | 'pending'
 export type LocationSource = 'seed' | 'community'
 export type LocationCategory = 'mall' | 'school' | 'government' | 'hospital' | 'transport' | 'other'
 
-export interface IReport {
-  _id: mongoose.Types.ObjectId
-  userId?: string
-  featureType: FeatureType
-  status: AccessibilityStatus
-  description?: string
-  /** Cloudinary secure_urls, verified server-side before being attached to the report. */
-  photos: string[]
-  upvotes: number
-  downvotes: number
-  verified: boolean
-  aiVerdict: AIVerdict
-  /** Voter/flagger uids — kept server-side only for idempotency, never sent to clients. */
-  upvoterIds: string[]
-  downvoterIds: string[]
-  flaggerIds: string[]
-  createdAt: Date
-  updatedAt: Date
-}
-
 export interface ILocation extends Document {
   _id: mongoose.Types.ObjectId
   name: string
@@ -40,7 +20,6 @@ export interface ILocation extends Document {
   placeKey: string | null
   source: LocationSource
   createdBy?: string | null
-  reports: mongoose.Types.DocumentArray<IReport>
   createdAt: Date
   updatedAt: Date
 }
@@ -57,6 +36,7 @@ export interface LocationJSON {
   placeKey: string | null
   source: LocationSource
   reports: ReportJSON[]
+  reportsLoaded?: boolean
   createdAt: string
   updatedAt: string
 }
@@ -79,43 +59,6 @@ export interface ReportJSON {
   createdAt: string
   updatedAt?: string
 }
-
-const ReportSchema = new Schema<IReport>(
-  {
-    userId: { type: String, index: true },
-    featureType: {
-      type: String,
-      required: true,
-      enum: ['ramp', 'elevator', 'restroom', 'parking', 'pathway', 'signage'],
-    },
-    status: {
-      type: String,
-      required: true,
-      enum: ['accessible', 'partial', 'inaccessible', 'unverified'],
-    },
-    description: { type: String, maxlength: 280 },
-    photos: {
-      type: [String],
-      default: [],
-      validate: {
-        validator: (arr: string[]) => arr.length <= 3,
-        message: 'A report can have at most 3 photos.',
-      },
-    },
-    upvotes: { type: Number, default: 0 },
-    downvotes: { type: Number, default: 0 },
-    verified: { type: Boolean, default: false },
-    aiVerdict: {
-      type: String,
-      enum: ['approved', 'flagged', 'pending'],
-      default: 'pending',
-    },
-    upvoterIds: { type: [String], default: [] },
-    downvoterIds: { type: [String], default: [] },
-    flaggerIds: { type: [String], default: [] },
-  },
-  { timestamps: true },
-)
 
 const LocationSchema = new Schema<ILocation>(
   {
@@ -154,7 +97,6 @@ const LocationSchema = new Schema<ILocation>(
       default: 'community',
     },
     createdBy: { type: String, default: null, index: true },
-    reports: [ReportSchema],
   },
   {
     timestamps: true,
@@ -163,31 +105,19 @@ const LocationSchema = new Schema<ILocation>(
       transform: (_doc, ret: Record<string, unknown>) => {
         const id = String(ret._id)
         const coords = ret.coordinates as { coordinates: [number, number] } | undefined
-        
+
         ret.id = id
         ret.lat = coords?.coordinates?.[1]
         ret.lng = coords?.coordinates?.[0]
-        
+        // Reports live in the Report collection — assembled by services.
+        if (!Array.isArray(ret.reports)) {
+          ret.reports = []
+        }
+
         delete ret._id
         delete ret.__v
         delete ret.coordinates
-        
-        if (Array.isArray(ret.reports)) {
-          ret.reports = (ret.reports as Array<Record<string, unknown>>).map((r) => ({
-            id: String(r._id),
-            locationId: id,
-            featureType: r.featureType,
-            status: r.status,
-            description: r.description,
-            photos: Array.isArray(r.photos) ? r.photos : [],
-            upvotes: r.upvotes,
-            downvotes: r.downvotes,
-            verified: r.verified,
-            aiVerdict: r.aiVerdict,
-            createdAt: r.createdAt instanceof Date ? r.createdAt.toISOString() : r.createdAt,
-            updatedAt: r.updatedAt instanceof Date ? r.updatedAt.toISOString() : r.updatedAt,
-          }))
-        }
+
         return ret
       },
     },

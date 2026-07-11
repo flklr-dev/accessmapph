@@ -1,10 +1,13 @@
 import { Router } from 'express'
 import {
-  getAllLocations,
+  listLocationPins,
   getLocationById,
   createLocation,
   resolveLocationAt,
   searchLocationsByName,
+  parseLocationCityScope,
+  parsePinLimit,
+  parseBbox,
 } from '../services/locationService.js'
 import { searchPlaces } from '../lib/nominatim.js'
 import { requireAuth, requireVerifiedEmail, type AuthenticatedRequest } from '../middleware/auth.js'
@@ -12,9 +15,22 @@ import { geocodeResolveRateLimit, geocodeSearchRateLimit, locationCreateRateLimi
 
 export const locationsRouter = Router()
 
-locationsRouter.get('/', async (_req, res) => {
+/**
+ * Map pin list — slim payloads for markers + filters.
+ * Query: ?city=all|manila|cebu|davao & bbox=west,south,east,north & limit=2000
+ * Full reports (photos, authors, descriptions) come from GET /:id on select.
+ */
+locationsRouter.get('/', async (req, res) => {
   try {
-    const locations = await getAllLocations()
+    const city = parseLocationCityScope(req.query.city)
+    const limit = parsePinLimit(req.query.limit)
+    const bbox = parseBbox(req.query.bbox)
+
+    const locations = await listLocationPins({
+      city,
+      limit,
+      ...(bbox ? { bbox } : {}),
+    })
     res.json(locations)
   } catch (error) {
     console.error('Error fetching locations:', error)

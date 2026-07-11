@@ -1,7 +1,12 @@
 import { type FeatureType, type AccessibilityStatus, type AIVerdict } from '../models/Location.js'
-import { getLocationById, addReportToLocation } from './locationService.js'
+import {
+  createReport,
+  getReportsForModeration,
+  locationExists,
+} from './locationService.js'
 import { recordReportContribution, getTrustStatus, getAuthorsByUids } from './userService.js'
 import { isOwnCloudinaryUrlForUser, MAX_PHOTOS_PER_REPORT } from '../lib/cloudinary.js'
+import { toFullReport } from '../models/Report.js'
 
 // ---- Tier 1: free, instant rule engine -----------------------------------
 
@@ -86,7 +91,7 @@ function delay(ms: number) {
 }
 
 function isDuplicateForUser(
-  reports: Array<{ featureType: string; userId?: string; createdAt?: string }>,
+  reports: Array<{ featureType: string; userId?: string; createdAt?: Date | string }>,
   featureType: string,
   userId: string,
   withinHours = 24,
@@ -104,7 +109,7 @@ function isDuplicateForUser(
 /** Tier 1: free rule-based checks. Returns a hard verdict, or null if rules are inconclusive. */
 function runRuleEngine(
   body: SubmitReportBody,
-  existingReports: Array<{ featureType: string; userId?: string; createdAt?: string }>,
+  existingReports: Array<{ featureType: string; userId?: string; createdAt?: Date | string }>,
   userId: string,
 ): ModerationResult | null {
   const description = body.description?.trim() ?? ''
@@ -175,7 +180,7 @@ function runRuleEngine(
  */
 async function moderateReport(
   body: SubmitReportBody,
-  existingReports: Array<{ featureType: string; userId?: string; createdAt?: string }>,
+  existingReports: Array<{ featureType: string; userId?: string; createdAt?: Date | string }>,
   userId: string,
 ): Promise<ModerationResult> {
   const ruleVerdict = runRuleEngine(body, existingReports, userId)
@@ -253,14 +258,14 @@ export async function processReportSubmission(
 ): Promise<{ report: ReportOutput; moderation: ModerationResult } | { error: string }> {
   await delay(MODERATION_DELAY_MS)
 
-  const location = await getLocationById(body.locationId)
-  if (!location) {
+  if (!(await locationExists(body.locationId))) {
     return { error: 'Location not found.' }
   }
 
-  const moderation = await moderateReport(body, location.reports ?? [], userId)
+  const existingReports = await getReportsForModeration(body.locationId)
+  const moderation = await moderateReport(body, existingReports, userId)
 
-  const reportData = {
+  const created = await createReport(body.locationId, {
     userId,
     featureType: body.featureType,
     status: body.status as AccessibilityStatus,
@@ -273,11 +278,9 @@ export async function processReportSubmission(
     upvoterIds: [],
     downvoterIds: [],
     flaggerIds: [],
-  }
+  })
 
-  const updatedLocation = await addReportToLocation(body.locationId, reportData)
-
-  if (!updatedLocation) {
+  if (!created) {
     return { error: 'Failed to add report.' }
   }
 
@@ -285,14 +288,12 @@ export async function processReportSubmission(
     await recordReportContribution(userId, { verdict: moderation.verdict })
   }
 
-  const newReport = updatedLocation.reports[0] as ReportOutput
   const authorMap = await getAuthorsByUids([userId])
   const author = authorMap.get(userId)
-  newReport.authorName = author?.name ?? 'Contributor'
-  newReport.authorPhotoURL = author?.photoURL ?? null
+  const report = toFullReport(created, author) as ReportOutput
 
   return {
-    report: newReport,
+    report,
     moderation,
   }
 }

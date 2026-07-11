@@ -19,6 +19,9 @@ export function MapSearchBar() {
         <span className="text-ink-muted">Search a place to report</span>
         <span className="text-ink-muted/55"> · tap map to pin</span>
       </span>
+      <kbd className="hidden sm:inline-block shrink-0 text-[10px] font-medium text-ink-muted/70 bg-black/5 border border-black/10 px-1.5 py-0.5 rounded-sm">
+        ⌘K
+      </kbd>
     </button>
   )
 }

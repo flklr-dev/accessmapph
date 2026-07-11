@@ -38,13 +38,9 @@ interface MapState {
   toast: Toast | null
   mapTap: MapTap | null
   isPinModalOpen: boolean
-  isCommandPaletteOpen: boolean
   isFindPlaceModalOpen: boolean
-  isLocationConfirmOpen: boolean
   isLeaderboardOpen: boolean
-  confirmLocationId: string | null
   locationConfirmPrefill: LocationSuggestion | null
-  setCommandPaletteOpen: (open: boolean) => void
   setFindPlaceModalOpen: (open: boolean) => void
   openLeaderboard: () => void
   closeLeaderboard: () => void
@@ -71,8 +67,6 @@ interface MapState {
   clearMapTap: () => void
   openPinModal: () => void
   closePinFlow: () => void
-  openExistingLocationConfirm: (locationId: string) => void
-  closeLocationConfirm: () => void
   startReportFromSearch: (place: SearchPlaceSelection) => void
 }
 
@@ -89,13 +83,9 @@ export const useMapStore = create<MapState>((set, get) => ({
   toast: null,
   mapTap: null,
   isPinModalOpen: false,
-  isCommandPaletteOpen: false,
   isFindPlaceModalOpen: false,
-  isLocationConfirmOpen: false,
   isLeaderboardOpen: false,
-  confirmLocationId: null,
   locationConfirmPrefill: null,
-  setCommandPaletteOpen: (open) => set({ isCommandPaletteOpen: open }),
   setFindPlaceModalOpen: (open) => set({ isFindPlaceModalOpen: open }),
   openLeaderboard: () => set({ isLeaderboardOpen: true }),
   closeLeaderboard: () => set({ isLeaderboardOpen: false }),
@@ -140,7 +130,7 @@ export const useMapStore = create<MapState>((set, get) => ({
     set((state) => ({
       locations: state.locations.map((loc) =>
         loc.id === locationId
-          ? { ...loc, reports: [report, ...loc.reports] }
+          ? { ...loc, reports: [report, ...loc.reports], reportsLoaded: true }
           : loc,
       ),
     })),
@@ -152,6 +142,7 @@ export const useMapStore = create<MapState>((set, get) => ({
           ? {
               ...loc,
               reports: loc.reports.map((r) => (r.id === report.id ? report : r)),
+              reportsLoaded: true,
             }
           : loc,
       ),
@@ -188,18 +179,6 @@ export const useMapStore = create<MapState>((set, get) => ({
 
   closePinFlow: () =>
     set({ mapTap: null, isPinModalOpen: false, locationConfirmPrefill: null }),
-
-  openExistingLocationConfirm: (locationId) =>
-    set({
-      confirmLocationId: locationId,
-      isLocationConfirmOpen: true,
-      isFindPlaceModalOpen: false,
-      selectedLocationId: locationId,
-      mapTap: null,
-    }),
-
-  closeLocationConfirm: () =>
-    set({ isLocationConfirmOpen: false, confirmLocationId: null }),
 
   startReportFromSearch: (place) =>
     set({

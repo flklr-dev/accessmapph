@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Loader2, MapPin, Search, Globe } from 'lucide-react'
+import { Loader2, MapPin, Search, Globe, Plus } from 'lucide-react'
 import { searchPlaces } from '../../api/locations'
 import { useMapStore } from '../../store/mapStore'
 import { useAuthStore } from '../../store/authStore'
@@ -16,13 +16,40 @@ function useDebouncedValue<T>(value: T, delayMs: number): T {
   return debounced
 }
 
+/**
+ * The single, unified "search AccessMap PH" surface — reachable from the map's
+ * search bar or the global ⌘K / "/" shortcut. One search, one mental model:
+ * results are grouped by what happens when you pick them (view vs. report),
+ * not by which UI you opened it from.
+ */
 export function FindPlaceModal() {
   const isOpen = useMapStore((s) => s.isFindPlaceModalOpen)
   const setOpen = useMapStore((s) => s.setFindPlaceModalOpen)
   const locations = useMapStore((s) => s.locations)
-  const openExistingLocationConfirm = useMapStore((s) => s.openExistingLocationConfirm)
+  const setSelectedLocation = useMapStore((s) => s.setSelectedLocation)
+  const openReportModal = useMapStore((s) => s.openReportModal)
   const startReportFromSearch = useMapStore((s) => s.startReportFromSearch)
   const requireAuth = useAuthStore((s) => s.requireAuth)
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement
+      const isTypingElsewhere =
+        ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) || target.isContentEditable
+
+      const isTrigger =
+        ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') ||
+        (e.key === '/' && !isTypingElsewhere)
+
+      if (isTrigger) {
+        e.preventDefault()
+        setOpen(!isOpen)
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [isOpen, setOpen])
 
   const [query, setQuery] = useState('')
   const [loading, setLoading] = useState(false)
@@ -86,10 +113,10 @@ export function FindPlaceModal() {
   const showEmpty = debouncedQuery.trim().length >= 2 && !loading && !hasResults && !error
 
   return (
-    <Modal open={isOpen} onClose={handleClose} title="Find a place to report">
+    <Modal open={isOpen} onClose={handleClose} title="Search AccessMap PH">
       <p className="text-sm text-text-muted m-0 mb-4">
-        Search by name to find an existing pin or a known place. You&apos;ll confirm the location
-        before submitting a report — this helps avoid duplicate or misplaced pins.
+        Find a place already on the map to view its reports, or search any place to add a new
+        accessibility report.
       </p>
 
       <div className="relative mb-4">
@@ -136,30 +163,42 @@ export function FindPlaceModal() {
           <ul className="m-0 p-0 list-none space-y-1" role="list">
             {onMapResults.map((loc) => (
               <li key={loc.id}>
-                <button
-                  type="button"
-                  onClick={() =>
-                    requireAuth(
-                      () => openExistingLocationConfirm(loc.id),
-                      'Sign in to report at this location.',
-                    )
-                  }
+                <div
                   className={cn(
-                    'w-full text-left p-3 rounded-md border border-border bg-white',
-                    'hover:border-primary hover:bg-blue-50/50 cursor-pointer transition-colors',
+                    'flex items-center gap-2 p-1 rounded-md border border-border bg-white',
+                    'hover:border-primary hover:bg-blue-50/50 transition-colors',
                   )}
                 >
-                  <span className="flex items-center gap-2 text-sm font-semibold text-text">
-                    <MapPin size={14} className="text-primary shrink-0" aria-hidden="true" />
-                    {loc.name}
-                  </span>
-                  <span className="block text-xs text-text-muted mt-0.5 pl-6">
-                    {loc.address} · {loc.city}
-                  </span>
-                  <span className="block text-[11px] text-primary mt-1 pl-6 font-medium">
-                    Confirm & report →
-                  </span>
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedLocation(loc.id)
+                      setOpen(false)
+                    }}
+                    className="flex-1 min-w-0 text-left p-2 border-0 bg-transparent cursor-pointer"
+                  >
+                    <span className="flex items-center gap-2 text-sm font-semibold text-text">
+                      <MapPin size={14} className="text-primary shrink-0" aria-hidden="true" />
+                      <span className="truncate">{loc.name}</span>
+                    </span>
+                    <span className="block text-xs text-text-muted mt-0.5 pl-6 truncate">
+                      {loc.address} · {loc.city}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      requireAuth(() => {
+                        openReportModal(loc.id)
+                        setOpen(false)
+                      }, 'Sign in to report at this location.')
+                    }
+                    className="shrink-0 inline-flex items-center gap-1 px-2.5 py-2 mr-1 rounded-sm text-xs font-semibold text-primary bg-primary/10 hover:bg-primary/20 border-0 cursor-pointer transition-colors"
+                  >
+                    <Plus size={13} aria-hidden="true" />
+                    Report
+                  </button>
+                </div>
               </li>
             ))}
           </ul>
@@ -169,7 +208,7 @@ export function FindPlaceModal() {
       {!loading && placeResults.length > 0 && (
         <section>
           <h3 className="text-xs font-semibold uppercase tracking-wide text-text-muted m-0 mb-2">
-            Places from map data
+            Not yet on the map
           </h3>
           <ul className="m-0 p-0 list-none space-y-1" role="list">
             {placeResults.map((place, index) => (
@@ -195,7 +234,7 @@ export function FindPlaceModal() {
                     {place.address} · {place.city}
                   </span>
                   <span className="block text-[11px] text-primary mt-1 pl-6 font-medium">
-                    Confirm location & report →
+                    Add & report →
                   </span>
                 </button>
               </li>

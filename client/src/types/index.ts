@@ -74,6 +74,20 @@ export interface Location {
   placeKey?: string | null
   source?: LocationSource
   reports: Report[]
+  /**
+   * True when full report payloads (photos, authors, descriptions) are present.
+   * Map pin lists set this to false; GET /api/locations/:id sets it to true.
+   */
+  reportsLoaded?: boolean
+}
+
+export type MapSpace = 'all' | 'manila' | 'cebu' | 'davao'
+
+export interface FetchLocationsOptions {
+  city?: MapSpace
+  /** west,south,east,north */
+  bbox?: string
+  limit?: number
 }
 
 export type ResolveAction = 'matched' | 'nearby' | 'new' | 'invalid'

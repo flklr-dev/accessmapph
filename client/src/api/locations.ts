@@ -1,5 +1,6 @@
 import type {
   CreateLocationInput,
+  FetchLocationsOptions,
   Location,
   PlaceSearchResponse,
   ResolveLocationResponse,
@@ -7,8 +8,27 @@ import type {
 import { distanceMeters, isWithinPhilippinesBounds, MATCH_RADIUS_METERS } from '../lib/geo'
 import { apiFetch } from './http'
 
-export async function fetchLocations(): Promise<Location[]> {
-  return apiFetch<Location[]>('/api/locations', { auth: false })
+/** Slim map pins — enough for markers + filters. Full reports via fetchLocationById. */
+export async function fetchLocations(
+  options: FetchLocationsOptions = {},
+): Promise<Location[]> {
+  const params = new URLSearchParams()
+  if (options.city && options.city !== 'all') {
+    params.set('city', options.city)
+  }
+  if (options.bbox) {
+    params.set('bbox', options.bbox)
+  }
+  if (options.limit) {
+    params.set('limit', String(options.limit))
+  }
+  const qs = params.toString()
+  return apiFetch<Location[]>(`/api/locations${qs ? `?${qs}` : ''}`, { auth: false })
+}
+
+/** Full location detail including photos, authors, and descriptions. */
+export async function fetchLocationById(id: string): Promise<Location> {
+  return apiFetch<Location>(`/api/locations/${encodeURIComponent(id)}`, { auth: false })
 }
 
 export async function searchPlaces(query: string): Promise<PlaceSearchResponse> {
@@ -94,7 +114,7 @@ export async function createLocation(
     body: input,
     auth: true,
   })
-  return data.location
+  return { ...data.location, reportsLoaded: true }
 }
 
 export async function resolveLocationWithFallback(

@@ -1,10 +1,12 @@
-import { Location, type ILocation, type IReport, type LocationCategory, type LocationJSON } from '../models/Location.js'
+import mongoose from 'mongoose'
+import { Location, type ILocation, type LocationCategory, type LocationJSON } from '../models/Location.js'
+import { Report, toFullReport, toSlimReport, type IReportDoc } from '../models/Report.js'
 import { encodeGeohash, MATCH_RADIUS_METERS, MIN_SEPARATION_METERS, STRONG_MATCH_RADIUS_METERS } from '../lib/geo.js'
 import { verifyPhilippineLocation, type GeofenceRejectionReason } from '../lib/nominatim.js'
 import { getAuthorsByUids, recordReportFlag, recordReportVerified } from './userService.js'
 
 export interface LocationCandidate {
-  location: ReturnType<typeof toPublicLocation>
+  location: LocationJSON
   distanceMeters: number
   matchReason: 'place_key' | 'proximity' | 'strong_proximity'
 }
@@ -21,7 +23,7 @@ export type ResolveAction = 'matched' | 'nearby' | 'new' | 'invalid'
 export interface ResolveResult {
   action: ResolveAction
   tap: { lat: number; lng: number }
-  location?: ReturnType<typeof toPublicLocation>
+  location?: LocationJSON
   distanceMeters?: number
   matchReason?: LocationCandidate['matchReason']
   candidates?: LocationCandidate[]
@@ -42,20 +44,183 @@ export interface CreateLocationInput {
   createdBy?: string
 }
 
-function toPublicLocation(doc: ILocation): LocationJSON {
-  return doc.toJSON() as unknown as LocationJSON
+/** Location fields only — reports are assembled from the Report collection. */
+function toPublicLocationBase(doc: ILocation): LocationJSON {
+  const json = doc.toJSON() as unknown as LocationJSON
+  return { ...json, reports: json.reports ?? [], reportsLoaded: false }
 }
 
-export async function getAllLocations() {
-  const locations = await Location.find().sort({ createdAt: -1 }).lean()
+async function attachSlimReports(locations: LocationJSON[]): Promise<LocationJSON[]> {
+  if (locations.length === 0) return locations
 
-  const authorMap = await getAuthorsByUids(
-    locations.flatMap((loc) => loc.reports.map((r) => r.userId)),
-  )
+  const ids = locations.map((l) => new mongoose.Types.ObjectId(l.id))
+  const reports = await Report.find({ locationId: { $in: ids } })
+    .select('locationId featureType status aiVerdict verified upvotes downvotes createdAt')
+    .sort({ createdAt: -1 })
+    .lean()
+
+  const byLocation = new Map<string, ReturnType<typeof toSlimReport>[]>()
+  for (const r of reports) {
+    const key = String(r.locationId)
+    const list = byLocation.get(key) ?? []
+    list.push(toSlimReport(r))
+    byLocation.set(key, list)
+  }
+
+  return locations.map((loc) => ({
+    ...loc,
+    reports: byLocation.get(loc.id) ?? [],
+    reportsLoaded: false,
+  }))
+}
+
+async function attachFullReports(location: LocationJSON): Promise<LocationJSON> {
+  const reports = await Report.find({ locationId: location.id })
+    .sort({ createdAt: -1 })
+    .lean()
+
+  const authorMap = await getAuthorsByUids(reports.map((r) => r.userId))
+  return {
+    ...location,
+    reports: reports.map((r) => {
+      const author = r.userId ? authorMap.get(r.userId) : undefined
+      return toFullReport(r, author)
+    }),
+    reportsLoaded: true,
+  }
+}
+
+/** City scopes used by the map "spaces" UI — keep in sync with leaderboard. */
+export type LocationCityScope = 'all' | 'manila' | 'cebu' | 'davao'
+
+const CITY_SCOPE_PATTERNS: Record<Exclude<LocationCityScope, 'all'>, RegExp> = {
+  manila: /manila/i,
+  cebu: /cebu/i,
+  davao: /davao/i,
+}
+
+const DEFAULT_PIN_LIMIT = 2000
+const MAX_PIN_LIMIT = 5000
+
+const PIN_LIST_PROJECTION = {
+  name: 1,
+  address: 1,
+  coordinates: 1,
+  category: 1,
+  city: 1,
+  geohash: 1,
+  placeKey: 1,
+  source: 1,
+  createdAt: 1,
+} as const
+
+export interface ListLocationPinsOptions {
+  city?: LocationCityScope
+  /** west,south,east,north in WGS84 degrees */
+  bbox?: { west: number; south: number; east: number; north: number }
+  limit?: number
+}
+
+export interface LocationPinJSON {
+  id: string
+  name: string
+  address: string
+  lat: number
+  lng: number
+  category: LocationCategory
+  city: string
+  geohash: string
+  placeKey: string | null
+  source: string
+  /** False until GET /api/locations/:id hydrates full report payloads. */
+  reportsLoaded: false
+  reports: ReturnType<typeof toSlimReport>[]
+  createdAt?: string
+}
+
+export function parseLocationCityScope(value: unknown): LocationCityScope {
+  if (value === 'manila' || value === 'cebu' || value === 'davao' || value === 'all') {
+    return value
+  }
+  return 'all'
+}
+
+export function parsePinLimit(value: unknown): number {
+  const n = Number(value)
+  if (!Number.isFinite(n) || n <= 0) return DEFAULT_PIN_LIMIT
+  return Math.min(Math.floor(n), MAX_PIN_LIMIT)
+}
+
+/** Parse `bbox=west,south,east,north` query string. Returns null if invalid. */
+export function parseBbox(value: unknown): ListLocationPinsOptions['bbox'] | null {
+  if (typeof value !== 'string' || !value.trim()) return null
+  const parts = value.split(',').map((p) => Number(p.trim()))
+  if (parts.length !== 4 || parts.some((n) => !Number.isFinite(n))) return null
+  const [west, south, east, north] = parts
+  if (west >= east || south >= north) return null
+  if (west < -180 || east > 180 || south < -90 || north > 90) return null
+  return { west, south, east, north }
+}
+
+/**
+ * Lightweight map pin list — no author enrichment, no photo URLs, no descriptions.
+ * Use GET /api/locations/:id for the full report payload when a pin is selected.
+ */
+export async function listLocationPins(
+  options: ListLocationPinsOptions = {},
+): Promise<LocationPinJSON[]> {
+  const city = options.city ?? 'all'
+  const limit = options.limit ?? DEFAULT_PIN_LIMIT
+  const filter: Record<string, unknown> = {}
+
+  if (city !== 'all') {
+    filter.city = CITY_SCOPE_PATTERNS[city]
+  }
+
+  if (options.bbox) {
+    const { west, south, east, north } = options.bbox
+    filter.coordinates = {
+      $geoWithin: {
+        $geometry: {
+          type: 'Polygon',
+          coordinates: [[
+            [west, south],
+            [east, south],
+            [east, north],
+            [west, north],
+            [west, south],
+          ]],
+        },
+      },
+    }
+  }
+
+  const locations = await Location.find(filter)
+    .select(PIN_LIST_PROJECTION)
+    .sort({ createdAt: -1 })
+    .limit(limit)
+    .lean()
+
+  if (locations.length === 0) return []
+
+  const locationIds = locations.map((loc) => loc._id)
+  const reports = await Report.find({ locationId: { $in: locationIds } })
+    .select('locationId featureType status aiVerdict verified upvotes downvotes createdAt')
+    .sort({ createdAt: -1 })
+    .lean()
+
+  const byLocation = new Map<string, ReturnType<typeof toSlimReport>[]>()
+  for (const r of reports) {
+    const key = String(r.locationId)
+    const list = byLocation.get(key) ?? []
+    list.push(toSlimReport(r))
+    byLocation.set(key, list)
+  }
 
   return locations.map((loc) => {
-    const json = {
-      id: loc._id.toString(),
+    const locationId = loc._id.toString()
+    return {
+      id: locationId,
       name: loc.name,
       address: loc.address,
       lat: loc.coordinates.coordinates[1],
@@ -65,27 +230,10 @@ export async function getAllLocations() {
       geohash: loc.geohash,
       placeKey: loc.placeKey,
       source: loc.source,
-      reports: loc.reports.map((r) => {
-        const author = r.userId ? authorMap.get(r.userId) : undefined
-        return {
-          id: r._id.toString(),
-          locationId: loc._id.toString(),
-          authorName: r.userId ? author?.name ?? 'Contributor' : null,
-          authorPhotoURL: author?.photoURL ?? null,
-          featureType: r.featureType,
-          status: r.status,
-          description: r.description,
-          photos: Array.isArray(r.photos) ? r.photos : [],
-          upvotes: r.upvotes,
-          downvotes: r.downvotes,
-          verified: r.verified,
-          aiVerdict: r.aiVerdict,
-          createdAt: r.createdAt?.toISOString(),
-        }
-      }),
+      reportsLoaded: false as const,
+      reports: byLocation.get(locationId) ?? [],
       createdAt: loc.createdAt?.toISOString(),
     }
-    return json
   })
 }
 
@@ -97,37 +245,21 @@ export async function searchLocationsByName(query: string, limit = 6) {
     .limit(limit)
     .sort({ name: 1 })
 
-  const results = locations.map((loc) => toPublicLocation(loc))
-  return attachAuthorNames(results)
+  const bases = locations.map((loc) => toPublicLocationBase(loc))
+  return attachSlimReports(bases)
 }
 
 export async function getLocationById(id: string) {
   const location = await Location.findById(id)
   if (!location) return null
-  const json = toPublicLocation(location)
-  const [withNames] = await attachAuthorNames([json])
-  return withNames
+  return attachFullReports(toPublicLocationBase(location))
 }
 
-/** Batched author enrichment for already-serialized locations (privacy: first name + avatar only). */
-async function attachAuthorNames<
-  T extends { reports: Array<{ userId?: string; authorName?: string | null; authorPhotoURL?: string | null }> },
->(locations: T[]): Promise<T[]> {
-  const authorMap = await getAuthorsByUids(
-    locations.flatMap((loc) => loc.reports.map((r) => r.userId)),
-  )
-
-  return locations.map((loc) => ({
-    ...loc,
-    reports: loc.reports.map((r) => {
-      const author = r.userId ? authorMap.get(r.userId) : undefined
-      return {
-        ...r,
-        authorName: r.userId ? author?.name ?? 'Contributor' : null,
-        authorPhotoURL: author?.photoURL ?? null,
-      }
-    }),
-  }))
+/** Location existence check without loading reports (for report submission). */
+export async function locationExists(id: string): Promise<boolean> {
+  if (!mongoose.Types.ObjectId.isValid(id)) return false
+  const count = await Location.countDocuments({ _id: id })
+  return count > 0
 }
 
 export async function findNearbyLocations(lat: number, lng: number, radiusMeters: number) {
@@ -166,6 +298,11 @@ export async function findLocationByPlaceKey(placeKey: string) {
   return Location.findOne({ placeKey })
 }
 
+async function toPublicWithSlimReports(doc: ILocation): Promise<LocationJSON> {
+  const [withReports] = await attachSlimReports([toPublicLocationBase(doc)])
+  return withReports
+}
+
 export async function resolveLocationAt(lat: number, lng: number): Promise<ResolveResult> {
   const tap = { lat, lng }
 
@@ -182,7 +319,7 @@ export async function resolveLocationAt(lat: number, lng: number): Promise<Resol
       return {
         action: 'matched',
         tap,
-        location: toPublicLocation(byKey),
+        location: await toPublicWithSlimReports(byKey),
         distanceMeters: 0,
         matchReason: 'place_key',
         suggestion,
@@ -191,14 +328,16 @@ export async function resolveLocationAt(lat: number, lng: number): Promise<Resol
   }
 
   const nearby = await findNearbyLocations(lat, lng, MATCH_RADIUS_METERS)
-  const candidates = nearby.map(({ location, distanceMeters }) => ({
-    location: toPublicLocation(location),
-    distanceMeters,
-    matchReason:
-      distanceMeters <= STRONG_MATCH_RADIUS_METERS
-        ? ('strong_proximity' as const)
-        : ('proximity' as const),
-  }))
+  const candidates = await Promise.all(
+    nearby.map(async ({ location, distanceMeters }) => ({
+      location: await toPublicWithSlimReports(location),
+      distanceMeters,
+      matchReason:
+        distanceMeters <= STRONG_MATCH_RADIUS_METERS
+          ? ('strong_proximity' as const)
+          : ('proximity' as const),
+    })),
+  )
 
   if (candidates.length === 1) {
     return {
@@ -233,9 +372,9 @@ export async function resolveLocationAt(lat: number, lng: number): Promise<Resol
 }
 
 export async function createLocation(input: CreateLocationInput): Promise<{
-  location?: ReturnType<typeof toPublicLocation>
+  location?: LocationJSON
   error?: string
-  conflict?: ReturnType<typeof toPublicLocation>
+  conflict?: LocationJSON
 }> {
   const { lat, lng, name, forceNew = false } = input
   const trimmedName = name.trim()
@@ -254,7 +393,10 @@ export async function createLocation(input: CreateLocationInput): Promise<{
   if (input.placeKey && !forceNew) {
     const existing = await findLocationByPlaceKey(input.placeKey)
     if (existing) {
-      return { error: 'This place already exists on the map.', conflict: toPublicLocation(existing) }
+      return {
+        error: 'This place already exists on the map.',
+        conflict: await toPublicWithSlimReports(existing),
+      }
     }
   }
 
@@ -263,14 +405,14 @@ export async function createLocation(input: CreateLocationInput): Promise<{
   if (tooClose.length > 0 && !forceNew) {
     return {
       error: `A pin already exists ${Math.round(tooClose[0].distanceMeters)} m away. Use the existing location or confirm this is a different place.`,
-      conflict: toPublicLocation(tooClose[0].location),
+      conflict: await toPublicWithSlimReports(tooClose[0].location),
     }
   }
 
   if (tooClose.length > 0 && forceNew && tooClose[0].distanceMeters < 5) {
     return {
       error: 'Pins cannot be placed within 5 m of an existing location.',
-      conflict: toPublicLocation(tooClose[0].location),
+      conflict: await toPublicWithSlimReports(tooClose[0].location),
     }
   }
 
@@ -287,30 +429,49 @@ export async function createLocation(input: CreateLocationInput): Promise<{
     placeKey: input.placeKey ?? null,
     source: 'community',
     createdBy: input.createdBy ?? null,
-    reports: [],
   })
 
-  return { location: toPublicLocation(location) }
+  return {
+    location: {
+      ...toPublicLocationBase(location),
+      reports: [],
+      reportsLoaded: true,
+    },
+  }
 }
 
-export async function addReportToLocation(
+export async function createReport(
   locationId: string,
-  report: Omit<IReport, '_id' | 'createdAt' | 'updatedAt'>,
+  report: {
+    userId: string
+    featureType: IReportDoc['featureType']
+    status: IReportDoc['status']
+    description?: string
+    photos: string[]
+    upvotes: number
+    downvotes: number
+    verified: boolean
+    aiVerdict: IReportDoc['aiVerdict']
+    upvoterIds: string[]
+    downvoterIds: string[]
+    flaggerIds: string[]
+  },
 ) {
-  const location = await Location.findByIdAndUpdate(
-    locationId,
-    {
-      $push: {
-        reports: {
-          $each: [report],
-          $position: 0,
-        },
-      },
-    },
-    { new: true },
-  )
+  if (!(await locationExists(locationId))) return null
 
-  return location ? toPublicLocation(location) : null
+  const created = await Report.create({
+    locationId,
+    ...report,
+  })
+
+  return created
+}
+
+/** Recent reports at a location for moderation duplicate checks. */
+export async function getReportsForModeration(locationId: string) {
+  return Report.find({ locationId })
+    .select('userId featureType createdAt')
+    .lean()
 }
 
 // ---- Tier 3: free community moderation (votes + flags) --------------------
@@ -343,24 +504,10 @@ export interface ReportActionResult {
   error?: string
 }
 
-async function toPublicReport(locationId: string, r: IReport): Promise<PublicReport> {
-  const authorMap = await getAuthorsByUids([r.userId])
-  const author = r.userId ? authorMap.get(r.userId) : undefined
-  return {
-    id: r._id.toString(),
-    locationId,
-    authorName: r.userId ? author?.name ?? 'Contributor' : null,
-    authorPhotoURL: author?.photoURL ?? null,
-    featureType: r.featureType,
-    status: r.status,
-    description: r.description,
-    photos: Array.isArray(r.photos) ? r.photos : [],
-    upvotes: r.upvotes,
-    downvotes: r.downvotes,
-    verified: r.verified,
-    aiVerdict: r.aiVerdict,
-    createdAt: r.createdAt?.toISOString(),
-  }
+async function toPublicReportDoc(report: IReportDoc): Promise<PublicReport> {
+  const authorMap = await getAuthorsByUids([report.userId])
+  const author = report.userId ? authorMap.get(report.userId) : undefined
+  return toFullReport(report, author)
 }
 
 export async function voteOnReport(
@@ -369,10 +516,11 @@ export async function voteOnReport(
   userId: string,
   direction: 'up' | 'down',
 ): Promise<ReportActionResult> {
-  const location = await Location.findById(locationId)
-  if (!location) return { error: 'Location not found.' }
+  if (!mongoose.Types.ObjectId.isValid(reportId) || !mongoose.Types.ObjectId.isValid(locationId)) {
+    return { error: 'Report not found.' }
+  }
 
-  const report = location.reports.id(reportId)
+  const report = await Report.findOne({ _id: reportId, locationId })
   if (!report) return { error: 'Report not found.' }
 
   if (report.userId === userId) {
@@ -404,7 +552,7 @@ export async function voteOnReport(
     if (report.aiVerdict === 'pending') report.aiVerdict = 'approved'
   }
 
-  await location.save()
+  await report.save()
 
   if (report.userId) {
     if (!wasFlagged && report.aiVerdict === 'flagged') {
@@ -414,7 +562,7 @@ export async function voteOnReport(
     }
   }
 
-  return { report: await toPublicReport(locationId, report) }
+  return { report: await toPublicReportDoc(report) }
 }
 
 export async function flagReport(
@@ -422,10 +570,11 @@ export async function flagReport(
   reportId: string,
   userId: string,
 ): Promise<ReportActionResult> {
-  const location = await Location.findById(locationId)
-  if (!location) return { error: 'Location not found.' }
+  if (!mongoose.Types.ObjectId.isValid(reportId) || !mongoose.Types.ObjectId.isValid(locationId)) {
+    return { error: 'Report not found.' }
+  }
 
-  const report = location.reports.id(reportId)
+  const report = await Report.findOne({ _id: reportId, locationId })
   if (!report) return { error: 'Report not found.' }
 
   if (report.userId === userId) {
@@ -433,7 +582,7 @@ export async function flagReport(
   }
 
   if (report.flaggerIds.includes(userId)) {
-    return { report: await toPublicReport(locationId, report) }
+    return { report: await toPublicReportDoc(report) }
   }
 
   const wasFlagged = report.aiVerdict === 'flagged'
@@ -444,11 +593,11 @@ export async function flagReport(
     report.verified = false
   }
 
-  await location.save()
+  await report.save()
 
   if (!wasFlagged && report.aiVerdict === 'flagged' && report.userId) {
     await recordReportFlag(report.userId)
   }
 
-  return { report: await toPublicReport(locationId, report) }
+  return { report: await toPublicReportDoc(report) }
 }
