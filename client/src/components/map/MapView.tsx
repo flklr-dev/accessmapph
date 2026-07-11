@@ -22,49 +22,48 @@ function getOverviewBounds() {
   return L.latLngBounds(PH_MAP_BOUNDS)
 }
 
-/** Wait until Leaflet panes exist and the container has dimensions. */
-function whenMapReady(map: L.Map, fn: () => void) {
-  const run = () => {
+function isMapUsable(map: L.Map): boolean {
+  try {
     const container = map.getContainer()
-    if (!container || container.clientWidth === 0) {
-      requestAnimationFrame(run)
-      return
-    }
-    if (!map.getPane('mapPane')) {
-      map.whenReady(() => requestAnimationFrame(fn))
-      return
-    }
-    fn()
+    return Boolean(container?.clientWidth && map.getPane('mapPane'))
+  } catch {
+    return false
   }
-  map.whenReady(run)
+}
+
+/** Safe camera move — skips if the map was torn down (avoids Leaflet `_leaflet_pos` crashes). */
+function safeMapMove(map: L.Map, fn: () => void) {
+  if (!isMapUsable(map)) return
+  try {
+    fn()
+  } catch {
+    // Map mid-teardown or zero-size container — ignore.
+  }
 }
 
 function fitOverview(map: L.Map, animate: boolean) {
-  whenMapReady(map, () => {
+  safeMapMove(map, () => {
     const bounds = getOverviewBounds()
-    try {
-      if (animate) {
-        map.flyToBounds(bounds, {
-          padding: OVERVIEW_PADDING,
-          duration: SPACE_FLY_DURATION,
-          animate: true,
-        })
-      } else {
-        map.fitBounds(bounds, { padding: OVERVIEW_PADDING, animate: false })
-      }
-    } catch {
-      const zoom = map.getBoundsZoom(bounds, false, OVERVIEW_PADDING)
-      map.setView(bounds.getCenter(), zoom, { animate: false })
+    if (animate) {
+      map.flyToBounds(bounds, {
+        padding: OVERVIEW_PADDING,
+        duration: SPACE_FLY_DURATION,
+        animate: true,
+      })
+      return
     }
+    map.fitBounds(bounds, { padding: OVERVIEW_PADDING, animate: false })
   })
 }
 
 function applyOverviewMinZoom(map: L.Map) {
-  const minZoom = map.getBoundsZoom(getOverviewBounds(), false, OVERVIEW_PADDING)
-  map.setMinZoom(minZoom)
-  if (map.getZoom() < minZoom) {
-    map.setZoom(minZoom)
-  }
+  safeMapMove(map, () => {
+    const minZoom = map.getBoundsZoom(getOverviewBounds(), false, OVERVIEW_PADDING)
+    map.setMinZoom(minZoom)
+    if (map.getZoom() < minZoom) {
+      map.setZoom(minZoom)
+    }
+  })
 }
 
 const statusMarkerClass: Record<AccessibilityStatus, string> = {
@@ -157,6 +156,11 @@ export function MapView() {
       zoomControl: false,
     })
 
+    // Must set a view immediately — Leaflet's load event only fires after setView/fitBounds.
+    const bounds = getOverviewBounds()
+    map.fitBounds(bounds, { padding: OVERVIEW_PADDING, animate: false })
+    applyOverviewMinZoom(map)
+
     L.control.zoom({ position: 'topright' }).addTo(map)
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -187,7 +191,7 @@ export function MapView() {
     })
 
     leafletMapRef.current = map
-    whenMapReady(map, () => {
+    requestAnimationFrame(() => {
       map.invalidateSize()
       applyOverviewMinZoom(map)
       fitOverview(map, false)
@@ -289,7 +293,7 @@ export function MapView() {
     if (selectedLocationId) {
       const location = filteredLocationsRef.current.find((l) => l.id === selectedLocationId)
       if (location) {
-        whenMapReady(map, () => {
+        safeMapMove(map, () => {
           map.flyTo([location.lat, location.lng], 15, { duration: 0.8 })
         })
       }
