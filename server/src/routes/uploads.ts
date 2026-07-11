@@ -9,11 +9,12 @@ import {
 } from '../lib/cloudinary.js'
 import { requireAuth, requireVerifiedEmail, type AuthenticatedRequest } from '../middleware/auth.js'
 import { uploadRateLimit } from '../middleware/rateLimit.js'
+import { cacheControl } from '../middleware/httpCache.js'
 
 export const uploadsRouter = Router()
 
 /** Public — lets the client hide the photo UI entirely if uploads aren't configured. */
-uploadsRouter.get('/status', (_req, res) => {
+uploadsRouter.get('/status', cacheControl({ maxAge: 300 }), (_req, res) => {
   res.json({
     enabled: isCloudinaryReady(),
     maxPhotos: MAX_PHOTOS_PER_REPORT,

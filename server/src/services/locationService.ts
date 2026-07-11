@@ -2,6 +2,7 @@ import mongoose from 'mongoose'
 import { Location, type ILocation, type LocationCategory, type LocationJSON } from '../models/Location.js'
 import { Report, toFullReport, toSlimReport, type IReportDoc } from '../models/Report.js'
 import { encodeGeohash, MATCH_RADIUS_METERS, MIN_SEPARATION_METERS, STRONG_MATCH_RADIUS_METERS } from '../lib/geo.js'
+import { findLocationsBySearchQuery } from '../lib/locationSearch.js'
 import { verifyPhilippineLocation, type GeofenceRejectionReason } from '../lib/nominatim.js'
 import { getAuthorsByUids, recordReportFlag, recordReportVerified } from './userService.js'
 
@@ -238,13 +239,7 @@ export async function listLocationPins(
 }
 
 export async function searchLocationsByName(query: string, limit = 6) {
-  const regex = new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i')
-  const locations = await Location.find({
-    $or: [{ name: regex }, { address: regex }, { city: regex }],
-  })
-    .limit(limit)
-    .sort({ name: 1 })
-
+  const locations = await findLocationsBySearchQuery(query, limit)
   const bases = locations.map((loc) => toPublicLocationBase(loc))
   return attachSlimReports(bases)
 }

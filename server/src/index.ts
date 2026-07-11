@@ -1,6 +1,7 @@
 import 'dotenv/config'
 import express from 'express'
 import cors from 'cors'
+import compression from 'compression'
 import { connectDB } from './lib/db.js'
 import { initFirebaseAdmin } from './lib/firebase.js'
 import { initAuthSessionCache, initGeocodeCache } from './lib/jsonCache.js'
@@ -13,6 +14,10 @@ import { authRouter } from './routes/auth.js'
 import { uploadsRouter } from './routes/uploads.js'
 import { leaderboardRouter } from './routes/leaderboard.js'
 import { securityHeaders } from './middleware/security.js'
+import { noStore } from './middleware/httpCache.js'
+import { requestLogger, logServerError } from './middleware/requestLogger.js'
+import { errorHandler } from './middleware/errorHandler.js'
+import { initJobWorkers } from './jobs/index.js'
 
 const app = express()
 const PORT = process.env.PORT ?? 3001
@@ -27,12 +32,16 @@ const allowedOrigins = [
 ].filter(Boolean) as string[]
 
 app.use(...securityHeaders)
+app.use(compression({ threshold: 1024 }))
+app.use(requestLogger)
 app.use(
   cors({
     origin: allowedOrigins,
   }),
 )
 app.use(express.json({ limit: '32kb' }))
+/** Private/mutating responses stay uncached unless a route overrides. */
+app.use(noStore())
 
 app.use('/api/health', healthRouter)
 app.use('/api/auth', authRouter)
@@ -40,6 +49,8 @@ app.use('/api/locations', locationsRouter)
 app.use('/api/reports', reportsRouter)
 app.use('/api/uploads', uploadsRouter)
 app.use('/api/leaderboard', leaderboardRouter)
+
+app.use(errorHandler)
 
 async function start() {
   try {
@@ -49,11 +60,12 @@ async function start() {
     initGeocodeCache(redis)
     initAuthSessionCache(redis)
     await connectDB()
+    initJobWorkers()
     app.listen(PORT, () => {
       console.log(`AccessMap PH API running on http://localhost:${PORT}`)
     })
   } catch (error) {
-    console.error('Failed to start server:', error)
+    logServerError('startup_failed', error)
     process.exit(1)
   }
 }
@@ -63,6 +75,15 @@ async function shutdown(signal: string) {
   await closeRedis()
   process.exit(0)
 }
+
+process.on('unhandledRejection', (reason) => {
+  logServerError('unhandled_rejection', reason)
+})
+
+process.on('uncaughtException', (error) => {
+  logServerError('uncaught_exception', error)
+  process.exit(1)
+})
 
 process.on('SIGTERM', () => void shutdown('SIGTERM'))
 process.on('SIGINT', () => void shutdown('SIGINT'))

@@ -46,6 +46,8 @@ interface MapState {
   closeLeaderboard: () => void
   activeSpace: 'all' | 'manila' | 'cebu' | 'davao'
   setActiveSpace: (space: 'all' | 'manila' | 'cebu' | 'davao') => void
+  mapOverviewEpoch: number
+  requestMapOverview: () => void
 
   setLocations: (locations: Location[]) => void
   setSelectedLocation: (id: string | null) => void
@@ -91,6 +93,9 @@ export const useMapStore = create<MapState>((set, get) => ({
   closeLeaderboard: () => set({ isLeaderboardOpen: false }),
   activeSpace: 'all',
   setActiveSpace: (space) => set({ activeSpace: space, selectedLocationId: null, mapTap: null }),
+  mapOverviewEpoch: 0,
+  requestMapOverview: () =>
+    set((state) => ({ mapOverviewEpoch: state.mapOverviewEpoch + 1 })),
 
   setLocations: (locations) => set({ locations }),
 

@@ -35,6 +35,7 @@ const statusColors = {
 export function Sidebar() {
   const activeSpace = useMapStore((s) => s.activeSpace)
   const setActiveSpace = useMapStore((s) => s.setActiveSpace)
+  const requestMapOverview = useMapStore((s) => s.requestMapOverview)
   const selectedLocationId = useMapStore((s) => s.selectedLocationId)
   const setSelectedLocation = useMapStore((s) => s.setSelectedLocation)
   
@@ -58,6 +59,9 @@ export function Sidebar() {
 
   const handleSpaceSwitch = (space: 'all' | 'manila' | 'cebu' | 'davao') => {
     setActiveSpace(space)
+    if (space === 'all') {
+      requestMapOverview()
+    }
   }
 
   return (

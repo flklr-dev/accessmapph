@@ -129,6 +129,14 @@ LocationSchema.index({ city: 1 })
 LocationSchema.index({ category: 1 })
 LocationSchema.index({ geohash: 1 })
 LocationSchema.index({ placeKey: 1 }, { sparse: true })
+LocationSchema.index({ name: 1 })
+LocationSchema.index(
+  { name: 'text', address: 'text', city: 'text' },
+  {
+    weights: { name: 10, address: 5, city: 3 },
+    name: 'location_text_search',
+  },
+)
 
 export const Location: Model<ILocation> =
   mongoose.models.Location ?? mongoose.model<ILocation>('Location', LocationSchema)

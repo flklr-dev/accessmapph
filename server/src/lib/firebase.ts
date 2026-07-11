@@ -54,12 +54,26 @@ export async function verifyIdToken(idToken: string): Promise<admin.auth.Decoded
   return admin.auth().verifyIdToken(idToken, true)
 }
 
+function isFirebaseUserNotFound(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    (error as { code?: string }).code === 'auth/user-not-found'
+  )
+}
+
 /** Permanently remove the Firebase Auth user (called during account deletion). */
 export async function deleteFirebaseAuthUser(uid: string): Promise<void> {
   if (!isFirebaseReady()) {
     throw new Error('AUTH_NOT_CONFIGURED')
   }
-  await admin.auth().deleteUser(uid)
+  try {
+    await admin.auth().deleteUser(uid)
+  } catch (error) {
+    if (isFirebaseUserNotFound(error)) return
+    throw error
+  }
 }
 
 export { admin }

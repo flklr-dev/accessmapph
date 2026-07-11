@@ -96,7 +96,7 @@ export function ProfileModal() {
       } catch {
         // Map will refresh on next load
       }
-      showToast('Your account has been permanently deleted.', 'info')
+      showToast('Your account is being deleted. You have been signed out.', 'info')
       handleClose()
     } catch (err) {
       setDeleteError(err instanceof Error ? err.message : 'Could not delete account.')

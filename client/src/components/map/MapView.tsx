@@ -1,6 +1,9 @@
 import { useEffect, useRef } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
+import 'leaflet.markercluster'
+import 'leaflet.markercluster/dist/MarkerCluster.css'
+import 'leaflet.markercluster/dist/MarkerCluster.Default.css'
 import { useMapStore } from '../../store/mapStore'
 import { useFilteredLocations, useLocationStatus } from '../../hooks/useFilteredLocations'
 import type { AccessibilityStatus, Location } from '../../types'
@@ -12,30 +15,27 @@ import { MapSearchBar } from './MapSearchBar'
 import { MapPinHint } from './MapPinHint'
 import { MapLeaderboardButton } from './MapLeaderboardButton'
 
-const OVERVIEW_PADDING = L.point(16, 16)
-// Bumps the auto-fitted overview zoom in by this much so the country fills
-// more of the frame instead of floating in a sea of empty ocean/margin.
-const OVERVIEW_ZOOM_NUDGE = 0.6
+const OVERVIEW_PADDING = L.point(24, 24)
+const SPACE_FLY_DURATION = 0.65
 
-/** Center + zoom that frames the whole PH archipelago, nudged in slightly. */
-function getOverviewView(map: L.Map) {
-  const bounds = L.latLngBounds(PH_MAP_BOUNDS)
-  const zoom = map.getBoundsZoom(bounds, false, OVERVIEW_PADDING) + OVERVIEW_ZOOM_NUDGE
-  return { center: bounds.getCenter(), zoom }
+function getOverviewBounds() {
+  return L.latLngBounds(PH_MAP_BOUNDS)
 }
 
-/**
- * Locks how far the user can zoom out to the overview level itself, so the
- * map never shows more empty space than the default PH framing. Recomputed
- * whenever the viewport size changes, since the fitting zoom depends on it.
- */
+function fitOverview(map: L.Map, animate: boolean) {
+  map.flyToBounds(getOverviewBounds(), {
+    padding: OVERVIEW_PADDING,
+    duration: animate ? SPACE_FLY_DURATION : 0,
+    animate,
+  })
+}
+
 function applyOverviewMinZoom(map: L.Map) {
-  const view = getOverviewView(map)
-  map.setMinZoom(view.zoom)
-  if (map.getZoom() < view.zoom) {
-    map.setZoom(view.zoom)
+  const minZoom = map.getBoundsZoom(getOverviewBounds(), false, OVERVIEW_PADDING)
+  map.setMinZoom(minZoom)
+  if (map.getZoom() < minZoom) {
+    map.setZoom(minZoom)
   }
-  return view
 }
 
 const statusMarkerClass: Record<AccessibilityStatus, string> = {
@@ -57,6 +57,27 @@ function createMarkerIcon(status: AccessibilityStatus, isSelected: boolean) {
   })
 }
 
+function createClusterIcon(cluster: L.MarkerCluster) {
+  const count = cluster.getChildCount()
+  let sizeClass = 'access-cluster-sm'
+  if (count >= 50) sizeClass = 'access-cluster-lg'
+  else if (count >= 10) sizeClass = 'access-cluster-md'
+
+  return L.divIcon({
+    html: `<div class="access-cluster ${sizeClass}" aria-hidden="true"><span>${count}</span></div>`,
+    className: 'access-cluster-wrapper',
+    iconSize: L.point(40, 40),
+  })
+}
+
+function buildPopupHtml(location: Location, status: AccessibilityStatus): string {
+  return `<div style="font-family:var(--font-sans),system-ui,sans-serif;line-height:1.4">
+    <strong style="font-size:14px;color:#2E2E35">${location.name}</strong><br/>
+    <span style="font-size:13px;color:#5C5C66">${STATUS_LABELS[status]}</span><br/>
+    <span style="font-size:12px;color:#9898A0">${location.city}</span>
+  </div>`
+}
+
 function createDraftPinIcon() {
   return L.divIcon({
     className: '',
@@ -66,20 +87,31 @@ function createDraftPinIcon() {
   })
 }
 
+interface TrackedMarker {
+  marker: L.Marker
+  status: AccessibilityStatus
+  location: Location
+}
+
 export function MapView() {
   const mapRef = useRef<HTMLDivElement>(null)
   const leafletMapRef = useRef<L.Map | null>(null)
-  const markersRef = useRef<L.Marker[]>([])
+  const clusterGroupRef = useRef<L.MarkerClusterGroup | null>(null)
+  const markersByIdRef = useRef<Map<string, TrackedMarker>>(new Map())
   const draftMarkerRef = useRef<L.Marker | null>(null)
   const prevSelectedIdRef = useRef<string | null | undefined>(undefined)
+  const overviewReadyRef = useRef(false)
 
   const filteredLocations = useFilteredLocations()
   const getLocationStatus = useLocationStatus()
   const selectedLocationId = useMapStore((s) => s.selectedLocationId)
+  const selectedLocationIdRef = useRef(selectedLocationId)
+  selectedLocationIdRef.current = selectedLocationId
   const setSelectedLocation = useMapStore((s) => s.setSelectedLocation)
   const setMapTap = useMapStore((s) => s.setMapTap)
   const mapTap = useMapStore((s) => s.mapTap)
   const activeSpace = useMapStore((s) => s.activeSpace)
+  const mapOverviewEpoch = useMapStore((s) => s.mapOverviewEpoch)
 
   useEffect(() => {
     if (!mapRef.current || leafletMapRef.current) return
@@ -88,12 +120,8 @@ export function MapView() {
       zoomControl: false,
     })
 
-    // Frame the whole archipelago on first load — max zoom-out that still
-    // shows the full country, adapted to the actual viewport size/shape.
-    // This also doubles as the floor for user zoom-out, so the map never
-    // reveals more empty space than the default overview.
-    const initialView = applyOverviewMinZoom(map)
-    map.setView(initialView.center, initialView.zoom, { animate: false })
+    applyOverviewMinZoom(map)
+    fitOverview(map, false)
 
     L.control.zoom({ position: 'topright' }).addTo(map)
 
@@ -103,13 +131,23 @@ export function MapView() {
       maxZoom: 19,
     }).addTo(map)
 
+    const clusterGroup = L.markerClusterGroup({
+      maxClusterRadius: 55,
+      disableClusteringAtZoom: 15,
+      spiderfyOnMaxZoom: true,
+      showCoverageOnHover: false,
+      chunkedLoading: true,
+      chunkInterval: 100,
+      chunkDelay: 25,
+      iconCreateFunction: createClusterIcon,
+    })
+    map.addLayer(clusterGroup)
+    clusterGroupRef.current = clusterGroup
+
     map.on('click', (e) => {
       setMapTap({ lat: e.latlng.lat, lng: e.latlng.lng })
     })
 
-    // Keep the zoom-out floor in sync with the viewport's actual size —
-    // e.g. rotating a phone or resizing the window changes how far out the
-    // overview needs to be to keep the whole country in frame.
     map.on('resize', () => {
       applyOverviewMinZoom(map)
     })
@@ -117,50 +155,93 @@ export function MapView() {
     leafletMapRef.current = map
     requestAnimationFrame(() => {
       map.invalidateSize()
-      const view = applyOverviewMinZoom(map)
-      map.setView(view.center, view.zoom, { animate: false })
+      applyOverviewMinZoom(map)
+      fitOverview(map, false)
     })
 
     return () => {
+      clusterGroup.clearLayers()
+      clusterGroupRef.current = null
+      markersByIdRef.current.clear()
       map.remove()
       leafletMapRef.current = null
     }
   }, [setMapTap])
 
+  // Incremental marker sync — avoid tearing down the whole layer on every change.
   useEffect(() => {
-    const map = leafletMapRef.current
-    if (!map) return
+    const group = clusterGroupRef.current
+    if (!group) return
 
-    markersRef.current.forEach((m) => m.remove())
-    markersRef.current = []
+    const nextIds = new Set(filteredLocations.map((l) => l.id))
+    const byId = markersByIdRef.current
 
-    filteredLocations.forEach((location: Location) => {
+    for (const [id, tracked] of byId) {
+      if (!nextIds.has(id)) {
+        group.removeLayer(tracked.marker)
+        byId.delete(id)
+      }
+    }
+
+    const toAdd: L.Marker[] = []
+
+    for (const location of filteredLocations) {
       const status = getLocationStatus(location)
-      const isSelected = location.id === selectedLocationId
+      const existing = byId.get(location.id)
+
+      if (existing) {
+        if (existing.status !== status) {
+          existing.status = status
+          existing.marker.setIcon(
+            createMarkerIcon(status, location.id === selectedLocationIdRef.current),
+          )
+        }
+        continue
+      }
 
       const marker = L.marker([location.lat, location.lng], {
-        icon: createMarkerIcon(status, isSelected),
+        icon: createMarkerIcon(status, location.id === selectedLocationIdRef.current),
         alt: `${location.name} — ${STATUS_LABELS[status]}`,
       })
 
       marker.on('click', (e) => {
         L.DomEvent.stopPropagation(e)
+        if (!marker.getPopup()) {
+          marker.bindPopup(buildPopupHtml(location, status), { className: 'accessmap-popup' })
+        }
         setSelectedLocation(location.id)
       })
 
-      marker.bindPopup(
-        `<div style="font-family:var(--font-sans),system-ui,sans-serif;line-height:1.4">
-          <strong style="font-size:14px;color:#2E2E35">${location.name}</strong><br/>
-          <span style="font-size:13px;color:#5C5C66">${STATUS_LABELS[status]}</span><br/>
-          <span style="font-size:12px;color:#9898A0">${location.city}</span>
-        </div>`,
-        { className: 'accessmap-popup' },
-      )
+      byId.set(location.id, { marker, status, location })
+      toAdd.push(marker)
+    }
 
-      marker.addTo(map)
-      markersRef.current.push(marker)
-    })
-  }, [filteredLocations, getLocationStatus, selectedLocationId, setSelectedLocation])
+    if (toAdd.length > 0) {
+      group.addLayers(toAdd)
+    }
+  }, [filteredLocations, getLocationStatus, setSelectedLocation])
+
+  // Selection highlight only — no full marker rebuild.
+  useEffect(() => {
+    const prev = prevSelectedIdRef.current
+    if (prev === selectedLocationId) return
+
+    const byId = markersByIdRef.current
+
+    if (prev) {
+      const tracked = byId.get(prev)
+      if (tracked) {
+        tracked.marker.setIcon(createMarkerIcon(tracked.status, false))
+      }
+    }
+
+    if (selectedLocationId) {
+      const tracked = byId.get(selectedLocationId)
+      if (tracked) {
+        tracked.marker.setIcon(createMarkerIcon(tracked.status, true))
+      }
+    }
+  }, [selectedLocationId])
 
   useEffect(() => {
     const map = leafletMapRef.current
@@ -169,7 +250,6 @@ export function MapView() {
     const prev = prevSelectedIdRef.current
     prevSelectedIdRef.current = selectedLocationId
 
-    // Initial mount — map already starts at the PH overview.
     if (prev === undefined) return
 
     if (selectedLocationId) {
@@ -180,22 +260,27 @@ export function MapView() {
       return
     }
 
-    // Pin deselected / detail panel closed → full Philippines overview.
     if (prev !== null) {
-      const view = getOverviewView(map)
-      map.flyTo(view.center, view.zoom, { duration: 0.9 })
+      fitOverview(map, true)
     }
   }, [selectedLocationId, filteredLocations])
 
   useEffect(() => {
     const map = leafletMapRef.current
-    if (!map) return
+    if (!map || activeSpace !== 'all') return
 
-    if (activeSpace === 'all') {
-      const view = getOverviewView(map)
-      map.flyTo(view.center, view.zoom, { duration: 1.2 })
-      return
+    // Initial fit is handled in map setup; only animate on explicit overview requests.
+    if (!overviewReadyRef.current) {
+      overviewReadyRef.current = true
+      if (mapOverviewEpoch === 0) return
     }
+
+    fitOverview(map, true)
+  }, [activeSpace, mapOverviewEpoch])
+
+  useEffect(() => {
+    const map = leafletMapRef.current
+    if (!map || activeSpace === 'all') return
 
     const spaceCoords = {
       manila: { center: [14.56, 120.99] as [number, number], zoom: 12 },
@@ -204,7 +289,7 @@ export function MapView() {
     }
 
     const { center, zoom } = spaceCoords[activeSpace]
-    map.flyTo(center, zoom, { duration: 1.2 })
+    map.flyTo(center, zoom, { duration: SPACE_FLY_DURATION })
   }, [activeSpace])
 
   useEffect(() => {

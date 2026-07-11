@@ -16,9 +16,9 @@ export async function fetchMyContributions(): Promise<{
   )
 }
 
-/** Permanently delete the signed-in account (server + Firebase Auth). */
-export async function deleteAccount(): Promise<void> {
-  await apiFetch<{ success: boolean }>('/api/auth/me', {
+/** Queue permanent account deletion (processed asynchronously on the server). */
+export async function deleteAccount(): Promise<{ accepted: boolean; jobId: string }> {
+  return apiFetch<{ accepted: boolean; jobId: string; message?: string }>('/api/auth/me', {
     method: 'DELETE',
     auth: true,
   })

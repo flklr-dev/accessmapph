@@ -5,6 +5,7 @@ import {
   parseLeaderboardLimit,
 } from '../services/leaderboardService.js'
 import { leaderboardReadRateLimit } from '../middleware/rateLimit.js'
+import { sendPublicCachedJson } from '../middleware/httpCache.js'
 
 export const leaderboardRouter = Router()
 
@@ -17,7 +18,10 @@ leaderboardRouter.get('/', leaderboardReadRateLimit, async (req, res) => {
     const city = parseLeaderboardCity(req.query.city)
     const limit = parseLeaderboardLimit(req.query.limit)
     const result = await getLeaderboard(city, limit)
-    res.json(result)
+    sendPublicCachedJson(req, res, result, {
+      maxAge: 300,
+      staleWhileRevalidate: 600,
+    })
   } catch (error) {
     console.error('Error fetching leaderboard:', error)
     res.status(500).json({ error: 'Failed to load leaderboard.' })

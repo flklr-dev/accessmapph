@@ -12,6 +12,7 @@ import {
 import { isNominatimTransientError, searchPlaces } from '../lib/nominatim.js'
 import { requireAuth, requireVerifiedEmail, type AuthenticatedRequest } from '../middleware/auth.js'
 import { geocodeResolveRateLimit, geocodeSearchRateLimit, locationCreateRateLimit, locationDetailReadRateLimit, locationPinsReadRateLimit } from '../middleware/rateLimit.js'
+import { sendPublicCachedJson } from '../middleware/httpCache.js'
 
 export const locationsRouter = Router()
 
@@ -31,7 +32,10 @@ locationsRouter.get('/', locationPinsReadRateLimit, async (req, res) => {
       limit,
       ...(bbox ? { bbox } : {}),
     })
-    res.json(locations)
+    sendPublicCachedJson(req, res, locations, {
+      maxAge: 30,
+      staleWhileRevalidate: 60,
+    })
   } catch (error) {
     console.error('Error fetching locations:', error)
     res.status(500).json({ error: 'Failed to fetch locations.' })
@@ -53,10 +57,15 @@ locationsRouter.get('/search', geocodeSearchRateLimit, async (req, res) => {
 
     try {
       const places = await searchPlaces(query, limit)
-      res.json({ onMap, places })
+      sendPublicCachedJson(req, res, { onMap, places }, { maxAge: 30, staleWhileRevalidate: 60 })
     } catch (error) {
       if (isNominatimTransientError(error)) {
-        res.json({ onMap, places: [], geocoderUnavailable: true })
+        sendPublicCachedJson(
+          req,
+          res,
+          { onMap, places: [], geocoderUnavailable: true },
+          { maxAge: 10 },
+        )
         return
       }
       throw error
@@ -74,7 +83,10 @@ locationsRouter.get('/:id', locationDetailReadRateLimit, async (req, res) => {
       res.status(404).json({ error: 'Location not found' })
       return
     }
-    res.json(location)
+    sendPublicCachedJson(req, res, location, {
+      maxAge: 60,
+      staleWhileRevalidate: 120,
+    })
   } catch (error) {
     console.error('Error fetching location:', error)
     res.status(500).json({ error: 'Failed to fetch location.' })

@@ -261,6 +261,13 @@ export async function getUserContributions(firebaseUid: string): Promise<UserCon
  * - Deletes the MongoDB profile and Firebase Auth user
  */
 export async function deleteUserAccount(firebaseUid: string): Promise<void> {
+  const existingUser = await User.findOne({ firebaseUid }).select('_id')
+  if (!existingUser) {
+    // Idempotent — deletion job may be retrying after a partial run.
+    await deleteFirebaseAuthUser(firebaseUid)
+    return
+  }
+
   const ownReports = await Report.find({ userId: firebaseUid }).lean()
 
   const photoUrls: string[] = []
@@ -339,7 +346,7 @@ export async function deleteUserAccount(firebaseUid: string): Promise<void> {
 
   const deleted = await User.deleteOne({ firebaseUid })
   if (deleted.deletedCount === 0) {
-    throw new Error('USER_NOT_FOUND')
+    return
   }
 }
 

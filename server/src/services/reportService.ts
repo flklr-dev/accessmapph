@@ -30,8 +30,6 @@ const NONSENSE_WORDS = new Set([
   'wala',
 ])
 
-const MODERATION_DELAY_MS = 400
-
 /** Ratio of vowels to letters below this, over a long-enough run, reads as keyboard-mash. */
 function looksLikeGibberish(text: string): boolean {
   const letters = text.replace(/[^a-zA-Z]/g, '')
@@ -84,10 +82,6 @@ export interface ReportOutput {
   verified: boolean
   aiVerdict: AIVerdict
   createdAt: string
-}
-
-function delay(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 function isDuplicateForUser(
@@ -256,8 +250,6 @@ export async function processReportSubmission(
   body: SubmitReportBody,
   userId: string,
 ): Promise<{ report: ReportOutput; moderation: ModerationResult } | { error: string }> {
-  await delay(MODERATION_DELAY_MS)
-
   if (!(await locationExists(body.locationId))) {
     return { error: 'Location not found.' }
   }
