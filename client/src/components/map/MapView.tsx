@@ -106,12 +106,15 @@ export function MapView() {
   const getLocationStatus = useLocationStatus()
   const selectedLocationId = useMapStore((s) => s.selectedLocationId)
   const selectedLocationIdRef = useRef(selectedLocationId)
-  selectedLocationIdRef.current = selectedLocationId
   const setSelectedLocation = useMapStore((s) => s.setSelectedLocation)
   const setMapTap = useMapStore((s) => s.setMapTap)
   const mapTap = useMapStore((s) => s.mapTap)
   const activeSpace = useMapStore((s) => s.activeSpace)
   const mapOverviewEpoch = useMapStore((s) => s.mapOverviewEpoch)
+
+  useEffect(() => {
+    selectedLocationIdRef.current = selectedLocationId
+  }, [selectedLocationId])
 
   useEffect(() => {
     if (!mapRef.current || leafletMapRef.current) return

@@ -28,8 +28,8 @@ app.set('trust proxy', 1)
 const allowedOrigins = [
   'http://localhost:5173',
   'http://localhost:5174',
-  process.env.CLIENT_URL,
-].filter(Boolean) as string[]
+  ...(process.env.CLIENT_URL?.split(',').map((origin) => origin.trim()).filter(Boolean) ?? []),
+]
 
 app.use(...securityHeaders)
 app.use(compression({ threshold: 1024 }))

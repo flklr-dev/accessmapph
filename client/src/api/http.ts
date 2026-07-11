@@ -1,4 +1,5 @@
 import { getIdToken } from '../lib/authSession'
+import { apiUrl } from '../lib/apiBase'
 
 export class ApiError extends Error {
   status: number
@@ -36,7 +37,7 @@ export async function apiFetch<T = unknown>(
     headers.set('Authorization', `Bearer ${token}`)
   }
 
-  const response = await fetch(path, {
+  const response = await fetch(apiUrl(path), {
     ...options,
     method,
     headers,
