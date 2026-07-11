@@ -169,14 +169,28 @@ export function MapView() {
       maxZoom: 19,
     }).addTo(map)
 
+    // Zoom-aware clustering: keep clusters local (city/barangay), not metro-wide.
+    // Radius is in screen pixels — smaller = less likely to merge Pasay with QC.
     const clusterGroup = L.markerClusterGroup({
-      maxClusterRadius: 55,
-      disableClusteringAtZoom: 15,
+      maxClusterRadius: (zoom) => {
+        if (zoom <= 7) return 70 // country overview → metro/region blobs
+        if (zoom <= 10) return 42 // regional → city-sized groups
+        if (zoom <= 12) return 24 // city → district / nearby only
+        return 14 // street → almost no merging
+      },
+      // Individual pins from city zoom up — no clusters at street level.
+      disableClusteringAtZoom: 13,
       spiderfyOnMaxZoom: true,
+      spiderfyDistanceMultiplier: 1.6,
       showCoverageOnHover: false,
+      zoomToBoundsOnClick: true,
+      animate: false,
+      animateAddingMarkers: false,
+      // Faster batching so zoom-in feels snappier with many pins.
       chunkedLoading: true,
-      chunkInterval: 100,
-      chunkDelay: 25,
+      chunkInterval: 50,
+      chunkDelay: 10,
+      removeOutsideVisibleBounds: true,
       iconCreateFunction: createClusterIcon,
     })
     map.addLayer(clusterGroup)
