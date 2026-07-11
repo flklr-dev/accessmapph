@@ -8,7 +8,7 @@ import { initAuthSessionCache, initGeocodeCache } from './lib/jsonCache.js'
 import { initRedis, closeRedis } from './lib/redis.js'
 import { initSlidingWindowStore } from './lib/slidingWindowStore.js'
 import { locationsRouter } from './routes/locations.js'
-import { healthRouter } from './routes/health.js'
+import { healthRouter, sendLiveness, sendLivenessHead } from './routes/health.js'
 import { reportsRouter } from './routes/reports.js'
 import { authRouter } from './routes/auth.js'
 import { uploadsRouter } from './routes/uploads.js'
@@ -24,6 +24,15 @@ const PORT = process.env.PORT ?? 3001
 
 app.disable('x-powered-by')
 app.set('trust proxy', 1)
+
+/**
+ * Health probes BEFORE middleware — Render requires 2xx within 5 seconds.
+ * Set Render "Health Check Path" to `/health`.
+ */
+app.get('/health', (_req, res) => sendLiveness(res))
+app.head('/health', (_req, res) => sendLivenessHead(res))
+app.get('/', (_req, res) => sendLiveness(res))
+app.head('/', (_req, res) => sendLivenessHead(res))
 
 const allowedOrigins = [
   'http://localhost:5173',
@@ -43,14 +52,6 @@ app.use(express.json({ limit: '32kb' }))
 /** Private/mutating responses stay uncached unless a route overrides. */
 app.use(noStore())
 
-/** Render's default health probe hits `/` with HEAD — must return 2xx. */
-app.get('/', (_req, res) => {
-  res.status(200).json({ ok: true, service: 'accessmapph-api' })
-})
-app.head('/', (_req, res) => {
-  res.status(200).end()
-})
-
 app.use('/api/health', healthRouter)
 app.use('/api/auth', authRouter)
 app.use('/api/locations', locationsRouter)
@@ -63,10 +64,10 @@ app.use(errorHandler)
 async function start() {
   const host = '0.0.0.0'
 
-  // Open the port immediately so Render's health probe can succeed while DB/Redis connect.
   await new Promise<void>((resolve) => {
     app.listen(Number(PORT), host, () => {
       console.log(`AccessMap PH API listening on ${host}:${PORT}`)
+      console.log('[startup] Health probes: GET /health, GET /api/health/live')
       resolve()
     })
   })

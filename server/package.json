@@ -2,6 +2,9 @@
   "name": "accessmapph-server",
   "version": "1.0.0",
   "private": true,
+  "engines": {
+    "node": ">=20 <25"
+  },
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
