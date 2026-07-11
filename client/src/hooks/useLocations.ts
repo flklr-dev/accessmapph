@@ -18,11 +18,11 @@ function seedForSpace(space: MapSpace): Location[] {
 }
 
 async function fetchSpaceLocations(space: MapSpace): Promise<Location[]> {
-  try {
-    return await fetchLocations({ city: space })
-  } catch {
-    return seedForSpace(space)
-  }
+  return fetchLocations({ city: space })
+}
+
+function devSeedFallback(space: MapSpace): Location[] {
+  return import.meta.env.DEV ? seedForSpace(space) : []
 }
 
 /**
@@ -34,7 +34,18 @@ export function useLocations() {
   const activeSpace = useMapStore((s) => s.activeSpace)
 
   useEffect(() => {
-    prefetchAllSpaces(fetchSpaceLocations)
+    // In production, load the active space first; warm others after a short delay
+    // so we don't hammer a cold Render instance with 4 parallel requests.
+    if (import.meta.env.DEV) {
+      prefetchAllSpaces(fetchSpaceLocations)
+      return
+    }
+
+    const timer = window.setTimeout(() => {
+      prefetchAllSpaces(fetchSpaceLocations)
+    }, 2_500)
+
+    return () => window.clearTimeout(timer)
   }, [])
 
   useEffect(() => {
@@ -53,7 +64,7 @@ export function useLocations() {
       })
       .catch(() => {
         if (!cancelled && !cached) {
-          const fallback = seedForSpace(activeSpace)
+          const fallback = devSeedFallback(activeSpace)
           setCachedLocations(activeSpace, fallback)
           setLocations(fallback)
         }

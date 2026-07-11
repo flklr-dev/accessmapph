@@ -73,7 +73,7 @@ interface MapState {
 }
 
 export const useMapStore = create<MapState>((set, get) => ({
-  locations: SEED_LOCATIONS,
+  locations: import.meta.env.DEV ? SEED_LOCATIONS : [],
   selectedLocationId: null,
   featureFilters: [],
   disabilityFilters: [],

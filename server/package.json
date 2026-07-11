@@ -12,6 +12,7 @@
     "start": "node dist/index.js",
     "seed": "tsx prisma/seed.ts",
     "db:seed": "tsx prisma/seed.ts",
+    "db:seed:fresh": "tsx prisma/seed.ts --fresh",
     "migrate:reports": "tsx scripts/migrate-reports.ts",
     "db:indexes": "tsx scripts/ensure-indexes.ts"
   },
