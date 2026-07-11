@@ -22,11 +22,40 @@ function getOverviewBounds() {
   return L.latLngBounds(PH_MAP_BOUNDS)
 }
 
+/** Wait until Leaflet panes exist and the container has dimensions. */
+function whenMapReady(map: L.Map, fn: () => void) {
+  const run = () => {
+    const container = map.getContainer()
+    if (!container || container.clientWidth === 0) {
+      requestAnimationFrame(run)
+      return
+    }
+    if (!map.getPane('mapPane')) {
+      map.whenReady(() => requestAnimationFrame(fn))
+      return
+    }
+    fn()
+  }
+  map.whenReady(run)
+}
+
 function fitOverview(map: L.Map, animate: boolean) {
-  map.flyToBounds(getOverviewBounds(), {
-    padding: OVERVIEW_PADDING,
-    duration: animate ? SPACE_FLY_DURATION : 0,
-    animate,
+  whenMapReady(map, () => {
+    const bounds = getOverviewBounds()
+    try {
+      if (animate) {
+        map.flyToBounds(bounds, {
+          padding: OVERVIEW_PADDING,
+          duration: SPACE_FLY_DURATION,
+          animate: true,
+        })
+      } else {
+        map.fitBounds(bounds, { padding: OVERVIEW_PADDING, animate: false })
+      }
+    } catch {
+      const zoom = map.getBoundsZoom(bounds, false, OVERVIEW_PADDING)
+      map.setView(bounds.getCenter(), zoom, { animate: false })
+    }
   })
 }
 
@@ -103,6 +132,7 @@ export function MapView() {
   const overviewReadyRef = useRef(false)
 
   const filteredLocations = useFilteredLocations()
+  const filteredLocationsRef = useRef(filteredLocations)
   const getLocationStatus = useLocationStatus()
   const selectedLocationId = useMapStore((s) => s.selectedLocationId)
   const selectedLocationIdRef = useRef(selectedLocationId)
@@ -111,6 +141,10 @@ export function MapView() {
   const mapTap = useMapStore((s) => s.mapTap)
   const activeSpace = useMapStore((s) => s.activeSpace)
   const mapOverviewEpoch = useMapStore((s) => s.mapOverviewEpoch)
+
+  useEffect(() => {
+    filteredLocationsRef.current = filteredLocations
+  }, [filteredLocations])
 
   useEffect(() => {
     selectedLocationIdRef.current = selectedLocationId
@@ -122,9 +156,6 @@ export function MapView() {
     const map = L.map(mapRef.current, {
       zoomControl: false,
     })
-
-    applyOverviewMinZoom(map)
-    fitOverview(map, false)
 
     L.control.zoom({ position: 'topright' }).addTo(map)
 
@@ -156,7 +187,7 @@ export function MapView() {
     })
 
     leafletMapRef.current = map
-    requestAnimationFrame(() => {
+    whenMapReady(map, () => {
       map.invalidateSize()
       applyOverviewMinZoom(map)
       fitOverview(map, false)
@@ -256,9 +287,11 @@ export function MapView() {
     if (prev === undefined) return
 
     if (selectedLocationId) {
-      const location = filteredLocations.find((l) => l.id === selectedLocationId)
+      const location = filteredLocationsRef.current.find((l) => l.id === selectedLocationId)
       if (location) {
-        map.flyTo([location.lat, location.lng], 15, { duration: 0.8 })
+        whenMapReady(map, () => {
+          map.flyTo([location.lat, location.lng], 15, { duration: 0.8 })
+        })
       }
       return
     }
@@ -266,7 +299,7 @@ export function MapView() {
     if (prev !== null) {
       fitOverview(map, true)
     }
-  }, [selectedLocationId, filteredLocations])
+  }, [selectedLocationId])
 
   useEffect(() => {
     const map = leafletMapRef.current

@@ -81,9 +81,6 @@ export function FindPlaceModal() {
       return
     }
 
-    setLoading(true)
-    setError(null)
-
     const localMatches = locations
       .filter(
         (loc) =>
@@ -93,18 +90,36 @@ export function FindPlaceModal() {
       )
       .slice(0, 6)
 
+    // Show seeded/on-map hits immediately — don't wait for Render + Nominatim.
+    setOnMapResults(localMatches)
+    setLoading(true)
+    setError(null)
+
+    let cancelled = false
+
     searchPlaces(trimmed)
-      .then(({ onMap, places }) => {
+      .then(({ onMap, places, geocoderUnavailable }) => {
+        if (cancelled) return
         const mergedOnMap = onMap.length > 0 ? onMap : localMatches
         setOnMapResults(mergedOnMap)
         setPlaceResults(places)
+        if (geocoderUnavailable && places.length === 0 && mergedOnMap.length === 0) {
+          setError('Place search is slow right now — try again in a moment.')
+        }
       })
       .catch((err) => {
+        if (cancelled) return
         setOnMapResults(localMatches)
         setPlaceResults([])
         setError(err instanceof Error ? err.message : 'Search failed.')
       })
-      .finally(() => setLoading(false))
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
   }, [debouncedQuery, isOpen, locations])
 
   const handleClose = () => setOpen(false)

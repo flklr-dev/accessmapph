@@ -53,23 +53,29 @@ locationsRouter.get('/search', geocodeSearchRateLimit, async (req, res) => {
   }
 
   try {
-    const onMap = await searchLocationsByName(query, limit)
+    // Mongo text search + Nominatim in parallel — avoids stacking latencies.
+    const [onMap, placesOutcome] = await Promise.all([
+      searchLocationsByName(query, limit),
+      searchPlaces(query, limit)
+        .then((places) => ({ places, geocoderUnavailable: false as const }))
+        .catch((error) => {
+          if (isNominatimTransientError(error)) {
+            return { places: [] as const, geocoderUnavailable: true as const }
+          }
+          throw error
+        }),
+    ])
 
-    try {
-      const places = await searchPlaces(query, limit)
-      sendPublicCachedJson(req, res, { onMap, places }, { maxAge: 30, staleWhileRevalidate: 60 })
-    } catch (error) {
-      if (isNominatimTransientError(error)) {
-        sendPublicCachedJson(
-          req,
-          res,
-          { onMap, places: [], geocoderUnavailable: true },
-          { maxAge: 10 },
-        )
-        return
-      }
-      throw error
-    }
+    sendPublicCachedJson(
+      req,
+      res,
+      {
+        onMap,
+        places: placesOutcome.places,
+        ...(placesOutcome.geocoderUnavailable ? { geocoderUnavailable: true } : {}),
+      },
+      { maxAge: 30, staleWhileRevalidate: 60 },
+    )
   } catch (error) {
     console.error('Error searching places:', error)
     res.status(500).json({ error: 'Failed to search places.' })

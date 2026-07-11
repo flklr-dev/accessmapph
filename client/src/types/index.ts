@@ -144,6 +144,7 @@ export interface PlaceSearchResult {
 export interface PlaceSearchResponse {
   onMap: Location[]
   places: PlaceSearchResult[]
+  geocoderUnavailable?: boolean
 }
 
 export const FEATURE_LABELS: Record<FeatureType, string> = {
