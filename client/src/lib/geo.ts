@@ -25,8 +25,8 @@ export const PH_BOUNDS = {
  * country without cropping, regardless of viewport aspect ratio.
  */
 export const PH_MAP_BOUNDS: [[number, number], [number, number]] = [
-  [4.3, 116.3],
-  [21.3, 127.2],
+  [5.5, 117.5],
+  [19.8, 126.2],
 ]
 
 export function isWithinPhilippinesBounds(lat: number, lng: number): boolean {

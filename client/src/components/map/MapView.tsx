@@ -15,11 +15,17 @@ import { MapSearchBar } from './MapSearchBar'
 import { MapPinHint } from './MapPinHint'
 import { MapLeaderboardButton } from './MapLeaderboardButton'
 
-const OVERVIEW_PADDING = L.point(24, 24)
+const OVERVIEW_PADDING = L.point(40, 40)
+/** Extra zoom on top of fitBounds — higher = more zoomed-in default (less empty ocean). */
+const OVERVIEW_ZOOM_NUDGE = 1.1
 const SPACE_FLY_DURATION = 0.65
 
 function getOverviewBounds() {
   return L.latLngBounds(PH_MAP_BOUNDS)
+}
+
+function getOverviewZoom(map: L.Map): number {
+  return map.getBoundsZoom(getOverviewBounds(), false, OVERVIEW_PADDING) + OVERVIEW_ZOOM_NUDGE
 }
 
 function isMapUsable(map: L.Map): boolean {
@@ -43,22 +49,20 @@ function safeMapMove(map: L.Map, fn: () => void) {
 
 function fitOverview(map: L.Map, animate: boolean) {
   safeMapMove(map, () => {
-    const bounds = getOverviewBounds()
+    const center = getOverviewBounds().getCenter()
+    const zoom = getOverviewZoom(map)
     if (animate) {
-      map.flyToBounds(bounds, {
-        padding: OVERVIEW_PADDING,
-        duration: SPACE_FLY_DURATION,
-        animate: true,
-      })
+      map.flyTo(center, zoom, { duration: SPACE_FLY_DURATION })
       return
     }
-    map.fitBounds(bounds, { padding: OVERVIEW_PADDING, animate: false })
+    map.setView(center, zoom, { animate: false })
   })
 }
 
 function applyOverviewMinZoom(map: L.Map) {
   safeMapMove(map, () => {
-    const minZoom = map.getBoundsZoom(getOverviewBounds(), false, OVERVIEW_PADDING)
+    // Lock zoom-out at the default overview level — no pulling back to empty ocean.
+    const minZoom = getOverviewZoom(map)
     map.setMinZoom(minZoom)
     if (map.getZoom() < minZoom) {
       map.setZoom(minZoom)
@@ -157,8 +161,7 @@ export function MapView() {
     })
 
     // Must set a view immediately — Leaflet's load event only fires after setView/fitBounds.
-    const bounds = getOverviewBounds()
-    map.fitBounds(bounds, { padding: OVERVIEW_PADDING, animate: false })
+    fitOverview(map, false)
     applyOverviewMinZoom(map)
 
     L.control.zoom({ position: 'topright' }).addTo(map)
@@ -169,27 +172,26 @@ export function MapView() {
       maxZoom: 19,
     }).addTo(map)
 
-    // Zoom-aware clustering: keep clusters local (city/barangay), not metro-wide.
-    // Radius is in screen pixels — smaller = less likely to merge Pasay with QC.
+    // Aggressive declutter: tiny cluster radius + uncluster early (metro zoom).
+    // Pasay must NOT merge with Quezon City — only near-neighbor pins share a blob.
     const clusterGroup = L.markerClusterGroup({
       maxClusterRadius: (zoom) => {
-        if (zoom <= 7) return 70 // country overview → metro/region blobs
-        if (zoom <= 10) return 42 // regional → city-sized groups
-        if (zoom <= 12) return 24 // city → district / nearby only
-        return 14 // street → almost no merging
+        if (zoom <= 7) return 28
+        if (zoom <= 9) return 16
+        if (zoom <= 10) return 10
+        return 1
       },
-      // Individual pins from city zoom up — no clusters at street level.
-      disableClusteringAtZoom: 13,
+      // Show every pin once you're roughly at metro / city view — no deep zoom needed.
+      disableClusteringAtZoom: 11,
       spiderfyOnMaxZoom: true,
-      spiderfyDistanceMultiplier: 1.6,
+      spiderfyDistanceMultiplier: 1.8,
       showCoverageOnHover: false,
       zoomToBoundsOnClick: true,
       animate: false,
       animateAddingMarkers: false,
-      // Faster batching so zoom-in feels snappier with many pins.
       chunkedLoading: true,
-      chunkInterval: 50,
-      chunkDelay: 10,
+      chunkInterval: 40,
+      chunkDelay: 5,
       removeOutsideVisibleBounds: true,
       iconCreateFunction: createClusterIcon,
     })
@@ -337,9 +339,9 @@ export function MapView() {
     if (!map || activeSpace === 'all') return
 
     const spaceCoords = {
-      manila: { center: [14.56, 120.99] as [number, number], zoom: 12 },
-      cebu: { center: [10.3187, 123.9064] as [number, number], zoom: 12 },
-      davao: { center: [7.1183, 125.6478] as [number, number], zoom: 12 },
+      manila: { center: [14.56, 120.99] as [number, number], zoom: 11 },
+      cebu: { center: [10.3187, 123.9064] as [number, number], zoom: 11 },
+      davao: { center: [7.1183, 125.6478] as [number, number], zoom: 11 },
     }
 
     const { center, zoom } = spaceCoords[activeSpace]
