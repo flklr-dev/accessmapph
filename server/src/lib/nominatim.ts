@@ -1,4 +1,9 @@
 import { isWithinPhilippinesBounds } from './geo.js'
+import { getGeocodeCache } from './jsonCache.js'
+import {
+  isNominatimTransientError,
+  nominatimFetchJson,
+} from './nominatimClient.js'
 
 export interface ReverseGeocodeResult {
   name: string
@@ -43,44 +48,32 @@ interface NominatimResponse {
   error?: string
 }
 
-const NOMINATIM_HEADERS = {
-  'User-Agent': 'AccessMapPH/0.1 (accessibility mapping; dev@accessmapph.local)',
-  Accept: 'application/json',
-}
-
-/** In-memory reverse-geocode cache (rounded coords) — reduces Nominatim abuse. */
-const reverseGeocodeCache = new Map<string, ReverseGeocodeResult | null>()
-const REVERSE_CACHE_MAX = 2000
 const REVERSE_CACHE_TTL_MS = 24 * 60 * 60 * 1000
-const reverseGeocodeCacheTimestamps = new Map<string, number>()
+const SEARCH_CACHE_TTL_MS = 60 * 60 * 1000
+const TRANSIENT_FAILURE_CACHE_TTL_MS = 30 * 1000
 
 function reverseCacheKey(lat: number, lng: number): string {
-  return `${lat.toFixed(4)},${lng.toFixed(4)}`
+  return `reverse:${lat.toFixed(4)},${lng.toFixed(4)}`
 }
 
-function getCachedReverse(lat: number, lng: number): ReverseGeocodeResult | null | undefined {
-  const key = reverseCacheKey(lat, lng)
-  const cachedAt = reverseGeocodeCacheTimestamps.get(key)
-  if (cachedAt === undefined) return undefined
-  if (Date.now() - cachedAt > REVERSE_CACHE_TTL_MS) {
-    reverseGeocodeCache.delete(key)
-    reverseGeocodeCacheTimestamps.delete(key)
-    return undefined
-  }
-  return reverseGeocodeCache.get(key) ?? null
+function searchCacheKey(query: string, limit: number): string {
+  return `search:${query.trim().toLowerCase()}:${limit}`
 }
 
-function setCachedReverse(lat: number, lng: number, value: ReverseGeocodeResult | null): void {
-  if (reverseGeocodeCache.size >= REVERSE_CACHE_MAX) {
-    const oldestKey = reverseGeocodeCache.keys().next().value
-    if (oldestKey) {
-      reverseGeocodeCache.delete(oldestKey)
-      reverseGeocodeCacheTimestamps.delete(oldestKey)
-    }
-  }
-  const key = reverseCacheKey(lat, lng)
-  reverseGeocodeCache.set(key, value)
-  reverseGeocodeCacheTimestamps.set(key, Date.now())
+function transientFailureKey(kind: 'reverse' | 'search', key: string): string {
+  return `transient:${kind}:${key}`
+}
+
+async function getCachedReverse(lat: number, lng: number): Promise<ReverseGeocodeResult | null | undefined> {
+  return getGeocodeCache().get<ReverseGeocodeResult | null>(reverseCacheKey(lat, lng))
+}
+
+async function setCachedReverse(
+  lat: number,
+  lng: number,
+  value: ReverseGeocodeResult | null,
+): Promise<void> {
+  await getGeocodeCache().set(reverseCacheKey(lat, lng), value, REVERSE_CACHE_TTL_MS)
 }
 
 function extractCity(addr: NominatimAddress): string {
@@ -101,13 +94,34 @@ function formatAddress(data: NominatimResponse, city: string): string {
   return parts.join(', ') || data.display_name || ''
 }
 
+function parseReverseResponse(
+  data: NominatimResponse,
+  lat: number,
+  lng: number,
+): ReverseGeocodeResult | null {
+  if (data.error || !data.address) return null
+
+  const city = extractCity(data.address)
+  const address = formatAddress(data, city) || `${lat.toFixed(5)}, ${lng.toFixed(5)}`
+  const name = data.name ?? data.address?.road ?? data.address?.suburb ?? `Location near ${city}`
+  const countryCode = data.address.country_code?.toLowerCase() ?? null
+
+  return { name, address, city, placeKey: buildPlaceKey(data), countryCode }
+}
+
 /** Reverse geocode via OpenStreetMap Nominatim (free, rate-limited) */
 export async function reverseGeocode(
   lat: number,
   lng: number,
 ): Promise<ReverseGeocodeResult | null> {
-  const cached = getCachedReverse(lat, lng)
+  const cacheKey = reverseCacheKey(lat, lng)
+  const cached = await getCachedReverse(lat, lng)
   if (cached !== undefined) return cached
+
+  const recentFailure = await getGeocodeCache().get<boolean>(transientFailureKey('reverse', cacheKey))
+  if (recentFailure) {
+    throw new Error('GEOCODER_UNAVAILABLE')
+  }
 
   const url = new URL('https://nominatim.openstreetmap.org/reverse')
   url.searchParams.set('lat', String(lat))
@@ -117,30 +131,20 @@ export async function reverseGeocode(
   url.searchParams.set('zoom', '18')
 
   try {
-    const response = await fetch(url.toString(), { headers: NOMINATIM_HEADERS })
-    if (!response.ok) {
-      setCachedReverse(lat, lng, null)
-      return null
-    }
-
-    const data = (await response.json()) as NominatimResponse
-    // Open ocean / no-data points come back as HTTP 200 with an `error` field
-    // and no `address` — treat that the same as "couldn't resolve".
-    if (data.error || !data.address) {
-      setCachedReverse(lat, lng, null)
-      return null
-    }
-
-    const city = extractCity(data.address)
-    const address = formatAddress(data, city) || `${lat.toFixed(5)}, ${lng.toFixed(5)}`
-    const name = data.name ?? data.address?.road ?? data.address?.suburb ?? `Location near ${city}`
-    const countryCode = data.address.country_code?.toLowerCase() ?? null
-
-    const result = { name, address, city, placeKey: buildPlaceKey(data), countryCode }
-    setCachedReverse(lat, lng, result)
+    const data = await nominatimFetchJson<NominatimResponse>(url.toString())
+    const result = parseReverseResponse(data, lat, lng)
+    await setCachedReverse(lat, lng, result)
     return result
-  } catch {
-    setCachedReverse(lat, lng, null)
+  } catch (error) {
+    if (isNominatimTransientError(error)) {
+      await getGeocodeCache().set(
+        transientFailureKey('reverse', cacheKey),
+        true,
+        TRANSIENT_FAILURE_CACHE_TTL_MS,
+      )
+      throw error
+    }
+    await setCachedReverse(lat, lng, null)
     return null
   }
 }
@@ -153,6 +157,17 @@ export async function searchPlaces(
   const trimmed = query.trim()
   if (trimmed.length < 2) return []
 
+  const cacheKey = searchCacheKey(trimmed, limit)
+  const cached = await getGeocodeCache().get<PlaceSearchResult[]>(cacheKey)
+  if (cached !== undefined) return cached
+
+  const recentFailure = await getGeocodeCache().get<boolean>(
+    transientFailureKey('search', cacheKey),
+  )
+  if (recentFailure) {
+    throw new Error('GEOCODER_UNAVAILABLE')
+  }
+
   const url = new URL('https://nominatim.openstreetmap.org/search')
   url.searchParams.set('q', trimmed)
   url.searchParams.set('format', 'json')
@@ -161,11 +176,8 @@ export async function searchPlaces(
   url.searchParams.set('limit', String(limit))
 
   try {
-    const response = await fetch(url.toString(), { headers: NOMINATIM_HEADERS })
-    if (!response.ok) return []
-
-    const results = (await response.json()) as NominatimResponse[]
-    return results
+    const results = await nominatimFetchJson<NominatimResponse[]>(url.toString())
+    const places = results
       .map((item) => {
         const lat = Number(item.lat)
         const lng = Number(item.lon)
@@ -189,12 +201,23 @@ export async function searchPlaces(
         }
       })
       .filter((item): item is PlaceSearchResult => item !== null)
-  } catch {
+
+    await getGeocodeCache().set(cacheKey, places, SEARCH_CACHE_TTL_MS)
+    return places
+  } catch (error) {
+    if (isNominatimTransientError(error)) {
+      await getGeocodeCache().set(
+        transientFailureKey('search', cacheKey),
+        true,
+        TRANSIENT_FAILURE_CACHE_TTL_MS,
+      )
+      throw error
+    }
     return []
   }
 }
 
-export type GeofenceRejectionReason = 'outside_ph' | 'ocean'
+export type GeofenceRejectionReason = 'outside_ph' | 'ocean' | 'geocoder_unavailable'
 
 export interface GeofenceResult {
   valid: boolean
@@ -207,6 +230,8 @@ export interface GeofenceResult {
 const REJECTION_MESSAGES: Record<GeofenceRejectionReason, string> = {
   outside_ph: 'This spot is outside the Philippines. AccessMap PH only covers locations within the country.',
   ocean: "This looks like open water. Pick a spot on land to add a pin.",
+  geocoder_unavailable:
+    'Location lookup is temporarily unavailable. Please try again in a moment.',
 }
 
 /**
@@ -225,7 +250,19 @@ export async function verifyPhilippineLocation(
     return { valid: false, reason: 'outside_ph', message: REJECTION_MESSAGES.outside_ph }
   }
 
-  const geocode = await reverseGeocode(lat, lng)
+  let geocode: ReverseGeocodeResult | null
+  try {
+    geocode = await reverseGeocode(lat, lng)
+  } catch (error) {
+    if (isNominatimTransientError(error)) {
+      return {
+        valid: false,
+        reason: 'geocoder_unavailable',
+        message: REJECTION_MESSAGES.geocoder_unavailable,
+      }
+    }
+    return { valid: false, reason: 'ocean', message: REJECTION_MESSAGES.ocean }
+  }
 
   if (!geocode) {
     return { valid: false, reason: 'ocean', message: REJECTION_MESSAGES.ocean }
@@ -237,3 +274,5 @@ export async function verifyPhilippineLocation(
 
   return { valid: true, geocode }
 }
+
+export { isNominatimTransientError } from './nominatimClient.js'

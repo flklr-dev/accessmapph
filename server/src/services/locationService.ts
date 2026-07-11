@@ -375,6 +375,7 @@ export async function createLocation(input: CreateLocationInput): Promise<{
   location?: LocationJSON
   error?: string
   conflict?: LocationJSON
+  errorCode?: 'GEOCODER_UNAVAILABLE'
 }> {
   const { lat, lng, name, forceNew = false } = input
   const trimmedName = name.trim()
@@ -387,7 +388,12 @@ export async function createLocation(input: CreateLocationInput): Promise<{
   // location can only ever be created here, so re-verify server-side too.
   const geofence = await verifyPhilippineLocation(lat, lng)
   if (!geofence.valid) {
-    return { error: geofence.message }
+    return {
+      error: geofence.message,
+      ...(geofence.reason === 'geocoder_unavailable'
+        ? { errorCode: 'GEOCODER_UNAVAILABLE' as const }
+        : {}),
+    }
   }
 
   if (input.placeKey && !forceNew) {

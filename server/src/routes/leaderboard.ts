@@ -4,6 +4,7 @@ import {
   parseLeaderboardCity,
   parseLeaderboardLimit,
 } from '../services/leaderboardService.js'
+import { leaderboardReadRateLimit } from '../middleware/rateLimit.js'
 
 export const leaderboardRouter = Router()
 
@@ -11,7 +12,7 @@ export const leaderboardRouter = Router()
  * Public leaderboard — no auth required.
  * Query: ?city=all|manila|cebu|davao&limit=25
  */
-leaderboardRouter.get('/', async (req, res) => {
+leaderboardRouter.get('/', leaderboardReadRateLimit, async (req, res) => {
   try {
     const city = parseLeaderboardCity(req.query.city)
     const limit = parseLeaderboardLimit(req.query.limit)

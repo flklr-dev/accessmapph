@@ -1,12 +1,12 @@
 import { Router } from 'express'
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js'
-import { accountDeleteRateLimit } from '../middleware/rateLimit.js'
+import { accountDeleteRateLimit, contributionsReadRateLimit, profileReadRateLimit } from '../middleware/rateLimit.js'
 import { deleteUserAccount, getUserContributions, toPublicUser } from '../services/userService.js'
 
 export const authRouter = Router()
 
 /** Current signed-in user profile (creates/syncs Mongo user on first call). */
-authRouter.get('/me', requireAuth, (req: AuthenticatedRequest, res) => {
+authRouter.get('/me', requireAuth, profileReadRateLimit, (req: AuthenticatedRequest, res) => {
   if (!req.user) {
     res.status(401).json({ error: 'Sign in required.' })
     return
@@ -15,7 +15,7 @@ authRouter.get('/me', requireAuth, (req: AuthenticatedRequest, res) => {
 })
 
 /** Profile + contribution history for the signed-in user. */
-authRouter.get('/me/contributions', requireAuth, async (req: AuthenticatedRequest, res) => {
+authRouter.get('/me/contributions', requireAuth, contributionsReadRateLimit, async (req: AuthenticatedRequest, res) => {
   if (!req.user || !req.auth?.uid) {
     res.status(401).json({ error: 'Sign in required.' })
     return

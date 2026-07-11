@@ -1,22 +1,6 @@
 import type { NextFunction, Request, Response } from 'express'
 import type { AuthenticatedRequest } from './auth.js'
-
-interface WindowEntry {
-  timestamps: number[]
-}
-
-/** In-memory sliding-window limiter (single-instance). Use Redis for multi-instance deploys. */
-const windows = new Map<string, WindowEntry>()
-
-const CLEANUP_INTERVAL_MS = 10 * 60 * 1000
-
-setInterval(() => {
-  const cutoff = Date.now() - 60 * 60 * 1000
-  for (const [key, entry] of windows) {
-    entry.timestamps = entry.timestamps.filter((t) => t > cutoff)
-    if (entry.timestamps.length === 0) windows.delete(key)
-  }
-}, CLEANUP_INTERVAL_MS).unref?.()
+import { getSlidingWindowStore } from '../lib/slidingWindowStore.js'
 
 function clientIp(req: Request): string {
   const forwarded = req.headers['x-forwarded-for']
@@ -26,28 +10,23 @@ function clientIp(req: Request): string {
   return req.ip || req.socket.remoteAddress || 'unknown'
 }
 
-function applyRateLimit(
+async function applyRateLimit(
   key: string,
   max: number,
   windowMs: number,
   res: Response,
   message?: string,
-): boolean {
-  const now = Date.now()
-  const entry = windows.get(key) ?? { timestamps: [] }
-  entry.timestamps = entry.timestamps.filter((t) => now - t < windowMs)
+): Promise<boolean> {
+  const result = await getSlidingWindowStore().consume(key, max, windowMs)
 
-  if (entry.timestamps.length >= max) {
-    const retryAfterSec = Math.ceil((entry.timestamps[0] + windowMs - now) / 1000)
-    res.setHeader('Retry-After', String(Math.max(retryAfterSec, 1)))
+  if (!result.allowed) {
+    res.setHeader('Retry-After', String(result.retryAfterSec ?? 1))
     res.status(429).json({
       error: message ?? 'Too many requests. Please try again later.',
     })
     return false
   }
 
-  entry.timestamps.push(now)
-  windows.set(key, entry)
   return true
 }
 
@@ -62,11 +41,11 @@ export function createRateLimiter(options: {
 }) {
   const { name, max, windowMs, message } = options
 
-  return function rateLimit(
+  return async function rateLimit(
     req: AuthenticatedRequest,
     res: Response,
     next: NextFunction,
-  ): void {
+  ): Promise<void> {
     const uid = req.auth?.uid
     if (!uid) {
       res.status(401).json({ error: 'Sign in required.' })
@@ -74,7 +53,7 @@ export function createRateLimiter(options: {
     }
 
     const key = `${name}:${uid}`
-    if (!applyRateLimit(key, max, windowMs, res, message)) return
+    if (!(await applyRateLimit(key, max, windowMs, res, message))) return
     next()
   }
 }
@@ -88,9 +67,13 @@ export function createIpRateLimiter(options: {
 }) {
   const { name, max, windowMs, message } = options
 
-  return function ipRateLimit(req: Request, res: Response, next: NextFunction): void {
+  return async function ipRateLimit(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> {
     const key = `${name}:ip:${clientIp(req)}`
-    if (!applyRateLimit(key, max, windowMs, res, message)) return
+    if (!(await applyRateLimit(key, max, windowMs, res, message))) return
     next()
   }
 }
@@ -148,4 +131,46 @@ export const geocodeResolveRateLimit = createIpRateLimiter({
   max: 60,
   windowMs: 60 * 60 * 1000,
   message: 'Too many location lookups. Please try again later.',
+})
+
+const ONE_MINUTE_MS = 60 * 1000
+
+/** Map pin list — DB read; cap scrapers and runaway client refetches. */
+export const locationPinsReadRateLimit = createIpRateLimiter({
+  name: 'read-location-pins',
+  max: 60,
+  windowMs: ONE_MINUTE_MS,
+  message: 'Too many map data requests. Please slow down.',
+})
+
+/** Single location detail — heavier payload (full reports). */
+export const locationDetailReadRateLimit = createIpRateLimiter({
+  name: 'read-location-detail',
+  max: 120,
+  windowMs: ONE_MINUTE_MS,
+  message: 'Too many location requests. Please slow down.',
+})
+
+/** Leaderboard aggregation — public read. */
+export const leaderboardReadRateLimit = createIpRateLimiter({
+  name: 'read-leaderboard',
+  max: 30,
+  windowMs: ONE_MINUTE_MS,
+  message: 'Too many leaderboard requests. Please try again shortly.',
+})
+
+/** Signed-in profile — light read, generous cap. */
+export const profileReadRateLimit = createRateLimiter({
+  name: 'read-profile',
+  max: 60,
+  windowMs: ONE_MINUTE_MS,
+  message: 'Too many profile requests. Please slow down.',
+})
+
+/** Contribution history — joins reports + locations per user. */
+export const contributionsReadRateLimit = createRateLimiter({
+  name: 'read-contributions',
+  max: 30,
+  windowMs: ONE_MINUTE_MS,
+  message: 'Too many requests. Please try again shortly.',
 })

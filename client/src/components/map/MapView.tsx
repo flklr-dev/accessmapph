@@ -5,12 +5,38 @@ import { useMapStore } from '../../store/mapStore'
 import { useFilteredLocations, useLocationStatus } from '../../hooks/useFilteredLocations'
 import type { AccessibilityStatus, Location } from '../../types'
 import { STATUS_LABELS } from '../../types'
-import { DEFAULT_CENTER, DEFAULT_ZOOM } from '../../data/seedLocations'
+import { PH_MAP_BOUNDS } from '../../lib/geo'
 import { MapLegend } from './MapLegend'
 import { MapTapBar } from './MapTapBar'
 import { MapSearchBar } from './MapSearchBar'
 import { MapPinHint } from './MapPinHint'
 import { MapLeaderboardButton } from './MapLeaderboardButton'
+
+const OVERVIEW_PADDING = L.point(16, 16)
+// Bumps the auto-fitted overview zoom in by this much so the country fills
+// more of the frame instead of floating in a sea of empty ocean/margin.
+const OVERVIEW_ZOOM_NUDGE = 0.6
+
+/** Center + zoom that frames the whole PH archipelago, nudged in slightly. */
+function getOverviewView(map: L.Map) {
+  const bounds = L.latLngBounds(PH_MAP_BOUNDS)
+  const zoom = map.getBoundsZoom(bounds, false, OVERVIEW_PADDING) + OVERVIEW_ZOOM_NUDGE
+  return { center: bounds.getCenter(), zoom }
+}
+
+/**
+ * Locks how far the user can zoom out to the overview level itself, so the
+ * map never shows more empty space than the default PH framing. Recomputed
+ * whenever the viewport size changes, since the fitting zoom depends on it.
+ */
+function applyOverviewMinZoom(map: L.Map) {
+  const view = getOverviewView(map)
+  map.setMinZoom(view.zoom)
+  if (map.getZoom() < view.zoom) {
+    map.setZoom(view.zoom)
+  }
+  return view
+}
 
 const statusMarkerClass: Record<AccessibilityStatus, string> = {
   accessible: 'access-marker-accessible',
@@ -59,10 +85,15 @@ export function MapView() {
     if (!mapRef.current || leafletMapRef.current) return
 
     const map = L.map(mapRef.current, {
-      center: [DEFAULT_CENTER.lat, DEFAULT_CENTER.lng],
-      zoom: DEFAULT_ZOOM,
       zoomControl: false,
     })
+
+    // Frame the whole archipelago on first load — max zoom-out that still
+    // shows the full country, adapted to the actual viewport size/shape.
+    // This also doubles as the floor for user zoom-out, so the map never
+    // reveals more empty space than the default overview.
+    const initialView = applyOverviewMinZoom(map)
+    map.setView(initialView.center, initialView.zoom, { animate: false })
 
     L.control.zoom({ position: 'topright' }).addTo(map)
 
@@ -76,8 +107,19 @@ export function MapView() {
       setMapTap({ lat: e.latlng.lat, lng: e.latlng.lng })
     })
 
+    // Keep the zoom-out floor in sync with the viewport's actual size —
+    // e.g. rotating a phone or resizing the window changes how far out the
+    // overview needs to be to keep the whole country in frame.
+    map.on('resize', () => {
+      applyOverviewMinZoom(map)
+    })
+
     leafletMapRef.current = map
-    requestAnimationFrame(() => map.invalidateSize())
+    requestAnimationFrame(() => {
+      map.invalidateSize()
+      const view = applyOverviewMinZoom(map)
+      map.setView(view.center, view.zoom, { animate: false })
+    })
 
     return () => {
       map.remove()
@@ -107,7 +149,7 @@ export function MapView() {
       })
 
       marker.bindPopup(
-        `<div style="font-family:Inter,system-ui,sans-serif;line-height:1.4">
+        `<div style="font-family:var(--font-sans),system-ui,sans-serif;line-height:1.4">
           <strong style="font-size:14px;color:#2E2E35">${location.name}</strong><br/>
           <span style="font-size:13px;color:#5C5C66">${STATUS_LABELS[status]}</span><br/>
           <span style="font-size:12px;color:#9898A0">${location.city}</span>
@@ -140,7 +182,8 @@ export function MapView() {
 
     // Pin deselected / detail panel closed → full Philippines overview.
     if (prev !== null) {
-      map.flyTo([DEFAULT_CENTER.lat, DEFAULT_CENTER.lng], DEFAULT_ZOOM, { duration: 0.9 })
+      const view = getOverviewView(map)
+      map.flyTo(view.center, view.zoom, { duration: 0.9 })
     }
   }, [selectedLocationId, filteredLocations])
 
@@ -148,8 +191,13 @@ export function MapView() {
     const map = leafletMapRef.current
     if (!map) return
 
+    if (activeSpace === 'all') {
+      const view = getOverviewView(map)
+      map.flyTo(view.center, view.zoom, { duration: 1.2 })
+      return
+    }
+
     const spaceCoords = {
-      all: { center: [12.5, 122.0] as [number, number], zoom: 6 },
       manila: { center: [14.56, 120.99] as [number, number], zoom: 12 },
       cebu: { center: [10.3187, 123.9064] as [number, number], zoom: 12 },
       davao: { center: [7.1183, 125.6478] as [number, number], zoom: 12 },

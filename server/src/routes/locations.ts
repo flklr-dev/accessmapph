@@ -9,9 +9,9 @@ import {
   parsePinLimit,
   parseBbox,
 } from '../services/locationService.js'
-import { searchPlaces } from '../lib/nominatim.js'
+import { isNominatimTransientError, searchPlaces } from '../lib/nominatim.js'
 import { requireAuth, requireVerifiedEmail, type AuthenticatedRequest } from '../middleware/auth.js'
-import { geocodeResolveRateLimit, geocodeSearchRateLimit, locationCreateRateLimit } from '../middleware/rateLimit.js'
+import { geocodeResolveRateLimit, geocodeSearchRateLimit, locationCreateRateLimit, locationDetailReadRateLimit, locationPinsReadRateLimit } from '../middleware/rateLimit.js'
 
 export const locationsRouter = Router()
 
@@ -20,7 +20,7 @@ export const locationsRouter = Router()
  * Query: ?city=all|manila|cebu|davao & bbox=west,south,east,north & limit=2000
  * Full reports (photos, authors, descriptions) come from GET /:id on select.
  */
-locationsRouter.get('/', async (req, res) => {
+locationsRouter.get('/', locationPinsReadRateLimit, async (req, res) => {
   try {
     const city = parseLocationCityScope(req.query.city)
     const limit = parsePinLimit(req.query.limit)
@@ -49,21 +49,27 @@ locationsRouter.get('/search', geocodeSearchRateLimit, async (req, res) => {
   }
 
   try {
-    const [onMap, places] = await Promise.all([
-      searchLocationsByName(query, limit),
-      searchPlaces(query, limit),
-    ])
+    const onMap = await searchLocationsByName(query, limit)
 
-    res.json({ onMap, places })
+    try {
+      const places = await searchPlaces(query, limit)
+      res.json({ onMap, places })
+    } catch (error) {
+      if (isNominatimTransientError(error)) {
+        res.json({ onMap, places: [], geocoderUnavailable: true })
+        return
+      }
+      throw error
+    }
   } catch (error) {
     console.error('Error searching places:', error)
     res.status(500).json({ error: 'Failed to search places.' })
   }
 })
 
-locationsRouter.get('/:id', async (req, res) => {
+locationsRouter.get('/:id', locationDetailReadRateLimit, async (req, res) => {
   try {
-    const location = await getLocationById(req.params.id)
+    const location = await getLocationById(String(req.params.id))
     if (!location) {
       res.status(404).json({ error: 'Location not found' })
       return
@@ -89,6 +95,13 @@ locationsRouter.post('/resolve', geocodeResolveRateLimit, async (req, res) => {
 
   try {
     const result = await resolveLocationAt(lat, lng)
+    if (result.action === 'invalid' && result.reason === 'geocoder_unavailable') {
+      res.status(503).json({
+        error: result.message,
+        code: 'GEOCODER_UNAVAILABLE',
+      })
+      return
+    }
     res.json(result)
   } catch (error) {
     console.error('Error resolving location:', error)
@@ -133,9 +146,11 @@ locationsRouter.post(
       })
 
       if (result.error) {
-        res.status(result.conflict ? 409 : 400).json({
+        const status = result.errorCode === 'GEOCODER_UNAVAILABLE' ? 503 : result.conflict ? 409 : 400
+        res.status(status).json({
           error: result.error,
-          conflict: result.conflict,
+          ...(result.conflict ? { conflict: result.conflict } : {}),
+          ...(result.errorCode ? { code: result.errorCode } : {}),
         })
         return
       }

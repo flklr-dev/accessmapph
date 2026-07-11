@@ -1,6 +1,7 @@
 import type { NextFunction, Request, Response } from 'express'
-import { isFirebaseReady, verifyIdToken } from '../lib/firebase.js'
-import { upsertUserFromToken, type AuthIdentity } from '../services/userService.js'
+import { isFirebaseReady } from '../lib/firebase.js'
+import { resolveAuthFromToken } from '../services/authSessionService.js'
+import type { AuthIdentity } from '../services/userService.js'
 import type { IUser } from '../models/User.js'
 
 export interface AuthenticatedRequest extends Request {
@@ -39,24 +40,12 @@ export async function requireAuth(
       return
     }
 
-    const decoded = await verifyIdToken(token)
+    const resolved = await resolveAuthFromToken(token)
 
-    if (!decoded.email) {
-      res.status(403).json({ error: 'A verified email is required.' })
-      return
-    }
-
-    const user = await upsertUserFromToken(decoded)
-
-    req.auth = {
-      uid: decoded.uid,
-      email: decoded.email,
-      displayName: user.displayName,
-      photoURL: user.photoURL,
-    }
-    req.user = user
-    req.emailVerified = decoded.email_verified === true
-    req.signInProvider = decoded.firebase?.sign_in_provider ?? 'unknown'
+    req.auth = resolved.auth
+    req.user = resolved.user
+    req.emailVerified = resolved.emailVerified
+    req.signInProvider = resolved.signInProvider
     next()
   } catch (error) {
     const message = error instanceof Error ? error.message : ''

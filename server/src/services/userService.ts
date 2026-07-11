@@ -47,8 +47,11 @@ function displayNameFromToken(token: DecodedIdToken): string {
   return 'Contributor'
 }
 
-/** Upsert local user profile from a verified Firebase ID token. */
-export async function upsertUserFromToken(token: DecodedIdToken): Promise<IUser> {
+/**
+ * Sync local user profile from a verified Firebase ID token.
+ * Writes to Mongo only on first sign-in or when email/name/photo changed.
+ */
+export async function syncUserFromToken(token: DecodedIdToken): Promise<IUser> {
   const email = token.email?.toLowerCase().trim()
   if (!email) {
     throw new Error('EMAIL_REQUIRED')
@@ -57,31 +60,38 @@ export async function upsertUserFromToken(token: DecodedIdToken): Promise<IUser>
   const displayName = displayNameFromToken(token)
   const photoURL = typeof token.picture === 'string' ? token.picture : null
 
-  const user = await User.findOneAndUpdate(
-    { firebaseUid: token.uid },
-    {
-      $set: {
-        email,
-        displayName,
-        photoURL,
-      },
-      $setOnInsert: {
-        firebaseUid: token.uid,
-        points: 0,
-        level: 'newcomer',
-        reportCount: 0,
-        trustEligibleCount: 0,
-      },
-    },
-    { upsert: true, new: true, runValidators: true },
-  )
-
-  if (!user) {
-    throw new Error('USER_UPSERT_FAILED')
+  const existing = await User.findOne({ firebaseUid: token.uid })
+  if (!existing) {
+    return User.create({
+      firebaseUid: token.uid,
+      email,
+      displayName,
+      photoURL,
+      points: 0,
+      level: 'newcomer',
+      reportCount: 0,
+      trustEligibleCount: 0,
+    })
   }
 
-  return user
+  const profileUnchanged =
+    existing.email === email &&
+    existing.displayName === displayName &&
+    (existing.photoURL ?? null) === photoURL
+
+  if (profileUnchanged) {
+    return existing
+  }
+
+  existing.email = email
+  existing.displayName = displayName
+  existing.photoURL = photoURL
+  await existing.save()
+  return existing
 }
+
+/** @deprecated Use syncUserFromToken — kept for any external callers. */
+export const upsertUserFromToken = syncUserFromToken
 
 export async function getUserByFirebaseUid(uid: string): Promise<IUser | null> {
   return User.findOne({ firebaseUid: uid })

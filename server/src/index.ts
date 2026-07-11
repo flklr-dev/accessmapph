@@ -3,6 +3,9 @@ import express from 'express'
 import cors from 'cors'
 import { connectDB } from './lib/db.js'
 import { initFirebaseAdmin } from './lib/firebase.js'
+import { initAuthSessionCache, initGeocodeCache } from './lib/jsonCache.js'
+import { initRedis, closeRedis } from './lib/redis.js'
+import { initSlidingWindowStore } from './lib/slidingWindowStore.js'
 import { locationsRouter } from './routes/locations.js'
 import { healthRouter } from './routes/health.js'
 import { reportsRouter } from './routes/reports.js'
@@ -41,6 +44,10 @@ app.use('/api/leaderboard', leaderboardRouter)
 async function start() {
   try {
     initFirebaseAdmin()
+    const redis = await initRedis()
+    initSlidingWindowStore(redis)
+    initGeocodeCache(redis)
+    initAuthSessionCache(redis)
     await connectDB()
     app.listen(PORT, () => {
       console.log(`AccessMap PH API running on http://localhost:${PORT}`)
@@ -50,5 +57,14 @@ async function start() {
     process.exit(1)
   }
 }
+
+async function shutdown(signal: string) {
+  console.log(`[shutdown] ${signal} received, closing connections…`)
+  await closeRedis()
+  process.exit(0)
+}
+
+process.on('SIGTERM', () => void shutdown('SIGTERM'))
+process.on('SIGINT', () => void shutdown('SIGINT'))
 
 start()

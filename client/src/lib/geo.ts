@@ -18,6 +18,17 @@ export const PH_BOUNDS = {
   maxLng: 127.0,
 }
 
+/**
+ * Tighter framing box for the map's country-wide overview — hugs the
+ * archipelago (Batanes to Tawi-Tawi, Palawan to Davao Oriental) so
+ * `fitBounds`/`flyToBounds` zooms out just enough to show the whole
+ * country without cropping, regardless of viewport aspect ratio.
+ */
+export const PH_MAP_BOUNDS: [[number, number], [number, number]] = [
+  [4.5, 116.5],
+  [21.2, 127.0],
+]
+
 export function isWithinPhilippinesBounds(lat: number, lng: number): boolean {
   return (
     lat >= PH_BOUNDS.minLat &&
