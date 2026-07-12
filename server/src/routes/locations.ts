@@ -5,12 +5,14 @@ import {
   createLocation,
   resolveLocationAt,
   searchLocationsByName,
+  searchLocationsOnMap,
+  searchExternalPlaces,
   parseLocationCityScope,
   parsePinLimit,
   parseBbox,
   type LocationPinQueryTiming,
 } from '../services/locationService.js'
-import { isNominatimTransientError, searchPlaces } from '../lib/nominatim.js'
+import { isNominatimTransientError } from '../lib/nominatim.js'
 import { requireAuth, requireVerifiedEmail, type AuthenticatedRequest } from '../middleware/auth.js'
 import { geocodeResolveRateLimit, geocodeSearchRateLimit, locationCreateRateLimit, locationDetailReadRateLimit, locationPinsReadRateLimit } from '../middleware/rateLimit.js'
 import { sendPublicCachedJson } from '../middleware/httpCache.js'
@@ -67,10 +69,15 @@ locationsRouter.get('/', locationPinsReadRateLimit, async (req, res) => {
   }
 })
 
-/** Search places by name — map pins + OpenStreetMap */
-locationsRouter.get('/search', geocodeSearchRateLimit, async (req, res) => {
+function parseSearchQuery(req: { query: { q?: unknown; limit?: unknown } }) {
   const query = typeof req.query.q === 'string' ? req.query.q.trim() : ''
   const limit = Math.min(Number(req.query.limit) || 6, 10)
+  return { query, limit }
+}
+
+/** Fast map-pin search — MongoDB only, no geocoder wait. */
+locationsRouter.get('/search/on-map', locationPinsReadRateLimit, async (req, res) => {
+  const { query, limit } = parseSearchQuery(req)
 
   if (query.length < 2) {
     res.status(400).json({ error: 'Search query must be at least 2 characters.' })
@@ -78,10 +85,49 @@ locationsRouter.get('/search', geocodeSearchRateLimit, async (req, res) => {
   }
 
   try {
-    // Mongo text search + Nominatim in parallel — avoids stacking latencies.
+    const onMap = await searchLocationsOnMap(query, limit)
+    sendPublicCachedJson(req, res, { onMap }, { maxAge: 30, staleWhileRevalidate: 60 })
+  } catch (error) {
+    console.error('Error searching map locations:', error)
+    res.status(500).json({ error: 'Failed to search map locations.' })
+  }
+})
+
+/** External place search — OpenStreetMap Nominatim (rate-limited, cached). */
+locationsRouter.get('/search/places', geocodeSearchRateLimit, async (req, res) => {
+  const { query, limit } = parseSearchQuery(req)
+
+  if (query.length < 2) {
+    res.status(400).json({ error: 'Search query must be at least 2 characters.' })
+    return
+  }
+
+  try {
+    const places = await searchExternalPlaces(query, limit)
+    sendPublicCachedJson(req, res, { places }, { maxAge: 60, staleWhileRevalidate: 120 })
+  } catch (error) {
+    if (isNominatimTransientError(error)) {
+      sendPublicCachedJson(req, res, { places: [], geocoderUnavailable: true }, { maxAge: 5 })
+      return
+    }
+    console.error('Error searching external places:', error)
+    res.status(500).json({ error: 'Failed to search external places.' })
+  }
+})
+
+/** Legacy combined search — kept for backward compatibility. Prefer split endpoints. */
+locationsRouter.get('/search', geocodeSearchRateLimit, async (req, res) => {
+  const { query, limit } = parseSearchQuery(req)
+
+  if (query.length < 2) {
+    res.status(400).json({ error: 'Search query must be at least 2 characters.' })
+    return
+  }
+
+  try {
     const [onMap, placesOutcome] = await Promise.all([
-      searchLocationsByName(query, limit),
-      searchPlaces(query, limit)
+      searchLocationsOnMap(query, limit),
+      searchExternalPlaces(query, limit)
         .then((places) => ({ places, geocoderUnavailable: false as const }))
         .catch((error) => {
           if (isNominatimTransientError(error)) {

@@ -2,6 +2,7 @@ import type {
   CreateLocationInput,
   FetchLocationsOptions,
   Location,
+  PlaceSearchResult,
   PlaceSearchResponse,
   ResolveLocationResponse,
 } from '../types'
@@ -31,9 +32,39 @@ export async function fetchLocationById(id: string): Promise<Location> {
   return apiFetch<Location>(`/api/locations/${encodeURIComponent(id)}`, { auth: false })
 }
 
+const SEARCH_LIMIT = 6
+
+function searchQueryParams(query: string): string {
+  return `q=${encodeURIComponent(query)}&limit=${SEARCH_LIMIT}`
+}
+
+/** Fast map-pin search — returns as soon as MongoDB responds. */
+export async function searchOnMap(
+  query: string,
+  signal?: AbortSignal,
+): Promise<Location[]> {
+  const data = await apiFetch<{ onMap: Location[] }>(
+    `/api/locations/search/on-map?${searchQueryParams(query)}`,
+    { auth: false, signal },
+  )
+  return data.onMap
+}
+
+/** External place search — OpenStreetMap (may take a few seconds). */
+export async function searchExternalPlaces(
+  query: string,
+  signal?: AbortSignal,
+): Promise<{ places: PlaceSearchResult[]; geocoderUnavailable?: boolean }> {
+  return apiFetch<{ places: PlaceSearchResult[]; geocoderUnavailable?: boolean }>(
+    `/api/locations/search/places?${searchQueryParams(query)}`,
+    { auth: false, signal },
+  )
+}
+
+/** @deprecated Prefer searchOnMap + searchExternalPlaces for progressive loading. */
 export async function searchPlaces(query: string): Promise<PlaceSearchResponse> {
   return apiFetch<PlaceSearchResponse>(
-    `/api/locations/search?q=${encodeURIComponent(query)}&limit=6`,
+    `/api/locations/search?${searchQueryParams(query)}`,
     { auth: false },
   )
 }

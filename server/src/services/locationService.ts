@@ -3,7 +3,7 @@ import { Location, type ILocation, type LocationCategory, type LocationJSON } fr
 import { Report, toFullReport, toSlimReport, type IReportDoc } from '../models/Report.js'
 import { encodeGeohash, MATCH_RADIUS_METERS, MIN_SEPARATION_METERS, STRONG_MATCH_RADIUS_METERS } from '../lib/geo.js'
 import { findLocationsBySearchQuery } from '../lib/locationSearch.js'
-import { verifyPhilippineLocation, type GeofenceRejectionReason } from '../lib/nominatim.js'
+import { verifyPhilippineLocation, searchPlaces, type GeofenceRejectionReason } from '../lib/nominatim.js'
 import { getAuthorsByUids, recordReportFlag, recordReportVerified } from './userService.js'
 
 export interface LocationCandidate {
@@ -272,6 +272,32 @@ export async function searchLocationsByName(query: string, limit = 6) {
   const locations = await findLocationsBySearchQuery(query, limit)
   const bases = locations.map((loc) => toPublicLocationBase(loc))
   return attachSlimReports(bases)
+}
+
+/** Fast map-pin search — no report join; search UI only needs name/address. */
+export async function searchLocationsOnMap(query: string, limit = 6) {
+  const locations = await findLocationsBySearchQuery(query, limit)
+  return locations.map((loc) => toPublicLocationBase(loc))
+}
+
+/** Nominatim forward search with places already on the map removed. */
+export async function searchExternalPlaces(query: string, limit = 6) {
+  const places = await searchPlaces(query, limit)
+  if (places.length === 0) return places
+
+  const placeKeys = places
+    .map((place) => place.placeKey)
+    .filter((key): key is string => Boolean(key))
+  if (placeKeys.length === 0) return places
+
+  const existing = await Location.find({ placeKey: { $in: placeKeys } })
+    .select('placeKey')
+    .lean()
+  const onMapKeys = new Set(
+    existing.map((doc) => doc.placeKey).filter((key): key is string => Boolean(key)),
+  )
+
+  return places.filter((place) => !place.placeKey || !onMapKeys.has(place.placeKey))
 }
 
 export async function getLocationById(id: string) {
