@@ -13,6 +13,7 @@ import { reportsRouter } from './routes/reports.js'
 import { authRouter } from './routes/auth.js'
 import { uploadsRouter } from './routes/uploads.js'
 import { leaderboardRouter } from './routes/leaderboard.js'
+import { feedbackRouter } from './routes/feedback.js'
 import { securityHeaders } from './middleware/security.js'
 import { noStore } from './middleware/httpCache.js'
 import { requestLogger, logServerError } from './middleware/requestLogger.js'
@@ -51,6 +52,7 @@ app.use('/api/locations', locationsRouter)
 app.use('/api/reports', reportsRouter)
 app.use('/api/uploads', uploadsRouter)
 app.use('/api/leaderboard', leaderboardRouter)
+app.use('/api/feedback', feedbackRouter)
 
 app.use(errorHandler)
 

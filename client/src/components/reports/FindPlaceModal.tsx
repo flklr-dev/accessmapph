@@ -64,8 +64,7 @@ export function FindPlaceModal() {
   }, [isOpen, setOpen])
 
   const [query, setQuery] = useState('')
-  const [loadingOnMap, setLoadingOnMap] = useState(false)
-  const [loadingPlaces, setLoadingPlaces] = useState(false)
+  const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [onMapResults, setOnMapResults] = useState<Location[]>([])
   const [placeResults, setPlaceResults] = useState<PlaceSearchResult[]>([])
@@ -79,8 +78,7 @@ export function FindPlaceModal() {
       setError(null)
       setOnMapResults([])
       setPlaceResults([])
-      setLoadingOnMap(false)
-      setLoadingPlaces(false)
+      setLoading(false)
       setTimeout(() => inputRef.current?.focus(), 50)
     }
   }, [isOpen])
@@ -92,19 +90,23 @@ export function FindPlaceModal() {
     if (trimmed.length < 2) {
       setOnMapResults([])
       setPlaceResults([])
-      setLoadingOnMap(false)
-      setLoadingPlaces(false)
+      setLoading(false)
       return
     }
 
     const localMatches = filterLocalLocations(locations, trimmed)
     const controller = new AbortController()
+    let pending = 2
+
+    const finishRequest = () => {
+      pending -= 1
+      if (pending === 0 && !controller.signal.aborted) setLoading(false)
+    }
 
     // Instant local hits; server refines on-map matches without blocking OSM.
     setOnMapResults(localMatches)
     setPlaceResults([])
-    setLoadingOnMap(true)
-    setLoadingPlaces(true)
+    setLoading(true)
     setError(null)
 
     searchOnMap(trimmed, controller.signal)
@@ -117,9 +119,7 @@ export function FindPlaceModal() {
         setOnMapResults(localMatches)
         if (err instanceof Error && err.name === 'AbortError') return
       })
-      .finally(() => {
-        if (!controller.signal.aborted) setLoadingOnMap(false)
-      })
+      .finally(finishRequest)
 
     searchExternalPlaces(trimmed, controller.signal)
       .then(({ places, geocoderUnavailable }) => {
@@ -135,19 +135,16 @@ export function FindPlaceModal() {
         setPlaceResults([])
         setError(err instanceof Error ? err.message : 'Search failed.')
       })
-      .finally(() => {
-        if (!controller.signal.aborted) setLoadingPlaces(false)
-      })
+      .finally(finishRequest)
 
     return () => controller.abort()
   }, [debouncedQuery, isOpen, locations])
 
   const handleClose = () => setOpen(false)
 
-  const isSearching = loadingOnMap || loadingPlaces
   const hasResults = onMapResults.length > 0 || placeResults.length > 0
   const showEmpty =
-    debouncedQuery.trim().length >= 2 && !isSearching && !hasResults && !error
+    debouncedQuery.trim().length >= 2 && !loading && !hasResults && !error
 
   return (
     <Modal open={isOpen} onClose={handleClose} title="Search AccessMap PH">
@@ -173,7 +170,14 @@ export function FindPlaceModal() {
         />
       </div>
 
-      {error && (
+      {loading && (
+        <div className="flex items-center gap-2 text-sm text-text-muted py-3" role="status">
+          <Loader2 size={16} className="animate-spin text-primary" aria-hidden="true" />
+          Searching places…
+        </div>
+      )}
+
+      {error && !loading && (
         <p className="text-sm text-red-500 m-0 mb-3" role="alert">
           {error}
         </p>
@@ -185,21 +189,12 @@ export function FindPlaceModal() {
         </p>
       )}
 
-      {(placeResults.length > 0 || loadingPlaces) && (
+      {placeResults.length > 0 && (
         <section className="mb-4">
-          <div className="flex items-center justify-between gap-2 mb-2">
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-text-muted m-0">
-              Not yet on the map
-            </h3>
-            {loadingPlaces && (
-              <span className="inline-flex items-center gap-1.5 text-xs text-text-muted" role="status">
-                <Loader2 size={12} className="animate-spin text-primary" aria-hidden="true" />
-                Searching…
-              </span>
-            )}
-          </div>
-          {placeResults.length > 0 && (
-            <ul className="m-0 p-0 list-none space-y-1" role="list">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-text-muted m-0 mb-2">
+            Not yet on the map
+          </h3>
+          <ul className="m-0 p-0 list-none space-y-1" role="list">
               {placeResults.map((place, index) => (
                 <li key={`${place.placeKey ?? place.name}-${index}`}>
                   <button
@@ -228,26 +223,16 @@ export function FindPlaceModal() {
                   </button>
                 </li>
               ))}
-            </ul>
-          )}
+          </ul>
         </section>
       )}
 
-      {(onMapResults.length > 0 || loadingOnMap) && (
+      {onMapResults.length > 0 && (
         <section>
-          <div className="flex items-center justify-between gap-2 mb-2">
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-text-muted m-0">
-              Already on the map
-            </h3>
-            {loadingOnMap && onMapResults.length === 0 && (
-              <span className="inline-flex items-center gap-1.5 text-xs text-text-muted" role="status">
-                <Loader2 size={12} className="animate-spin text-primary" aria-hidden="true" />
-                Searching…
-              </span>
-            )}
-          </div>
-          {onMapResults.length > 0 && (
-            <ul className="m-0 p-0 list-none space-y-1" role="list">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-text-muted m-0 mb-2">
+            Already on the map
+          </h3>
+          <ul className="m-0 p-0 list-none space-y-1" role="list">
               {onMapResults.map((loc) => (
                 <li key={loc.id}>
                   <div
@@ -288,12 +273,11 @@ export function FindPlaceModal() {
                   </div>
                 </li>
               ))}
-            </ul>
-          )}
+          </ul>
         </section>
       )}
 
-      {debouncedQuery.trim().length < 2 && !isSearching && (
+      {debouncedQuery.trim().length < 2 && !loading && (
         <p className="text-xs text-text-faint m-0 pt-2 text-center">
           Type at least 2 characters to search
         </p>

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { FileText, LogOut, Shield, User, UserCircle } from 'lucide-react'
+import { FileText, LogOut, MessageSquare, Shield, User, UserCircle } from 'lucide-react'
 import { useAuthStore } from '../../store/authStore'
 import { signOutUser } from '../../lib/authActions'
 import { LEVEL_LABELS } from '../../types/auth'
@@ -14,6 +14,7 @@ export function UserMenu({ variant = 'light' }: UserMenuProps) {
   const profile = useAuthStore((s) => s.profile)
   const openAuthModal = useAuthStore((s) => s.openAuthModal)
   const openProfileModal = useAuthStore((s) => s.openProfileModal)
+  const openFeedbackModal = useAuthStore((s) => s.openFeedbackModal)
   const loading = useAuthStore((s) => s.loading)
 
   const [open, setOpen] = useState(false)
@@ -126,6 +127,18 @@ export function UserMenu({ variant = 'light' }: UserMenuProps) {
           >
             <UserCircle size={14} aria-hidden="true" />
             View profile
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setOpen(false)
+              openFeedbackModal()
+            }}
+            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-ink rounded-sm hover:bg-surface-1 border-0 bg-transparent cursor-pointer text-left"
+          >
+            <MessageSquare size={14} aria-hidden="true" />
+            Send feedback
           </button>
           <div className="my-1 border-t border-border" role="separator" />
           <a

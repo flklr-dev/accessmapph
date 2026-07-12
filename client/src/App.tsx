@@ -4,6 +4,7 @@ import { useAuthBootstrap } from './hooks/useAuthBootstrap'
 import { Header } from './components/layout/Header'
 import { AuthModal } from './components/auth/AuthModal'
 import { ProfileModal } from './components/auth/ProfileModal'
+import { FeedbackModal } from './components/auth/FeedbackModal'
 import { LeaderboardModal } from './components/leaderboard/LeaderboardModal'
 import { Sidebar } from './components/layout/Sidebar'
 import { MobilePanel } from './components/layout/MobilePanel'
@@ -79,6 +80,7 @@ export default function App() {
 
       <AuthModal />
       <ProfileModal />
+      <FeedbackModal />
       <LeaderboardModal />
       <FindPlaceModal />
       <ReportFormModal />

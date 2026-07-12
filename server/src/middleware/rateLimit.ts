@@ -78,6 +78,14 @@ export function createIpRateLimiter(options: {
   }
 }
 
+/** Signed-in feedback submissions — generous but capped against spam. */
+export const feedbackRateLimit = createRateLimiter({
+  name: 'feedback',
+  max: 5,
+  windowMs: 60 * 60 * 1000,
+  message: 'Feedback limit reached (5 per hour). Please try again later.',
+})
+
 /** PRD: max 20 reports/hour per user */
 export const reportRateLimit = createRateLimiter({
   name: 'reports',
