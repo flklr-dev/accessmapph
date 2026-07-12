@@ -211,6 +211,12 @@ export interface UserContribution {
   createdAt: string
 }
 
+/** Lightweight ownership data needed by report controls during app startup. */
+export async function getUserReportIds(firebaseUid: string): Promise<string[]> {
+  const reports = await Report.find({ userId: firebaseUid }).select('_id').lean()
+  return reports.map((report) => report._id.toString())
+}
+
 /** All reports authored by this user, newest first. */
 export async function getUserContributions(firebaseUid: string): Promise<UserContribution[]> {
   const reports = await Report.find({ userId: firebaseUid })

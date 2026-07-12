@@ -8,6 +8,7 @@ import {
   parseLocationCityScope,
   parsePinLimit,
   parseBbox,
+  type LocationPinQueryTiming,
 } from '../services/locationService.js'
 import { isNominatimTransientError, searchPlaces } from '../lib/nominatim.js'
 import { requireAuth, requireVerifiedEmail, type AuthenticatedRequest } from '../middleware/auth.js'
@@ -26,12 +27,36 @@ locationsRouter.get('/', locationPinsReadRateLimit, async (req, res) => {
     const city = parseLocationCityScope(req.query.city)
     const limit = parsePinLimit(req.query.limit)
     const bbox = parseBbox(req.query.bbox)
+    let timing: LocationPinQueryTiming | undefined
 
     const locations = await listLocationPins({
       city,
       limit,
       ...(bbox ? { bbox } : {}),
+      onTiming: (value) => {
+        timing = value
+      },
     })
+    if (timing) {
+      const locationsMs = Math.round(timing.locationsMs)
+      const reportsMs = Math.round(timing.reportsMs)
+      const transformMs = Math.round(timing.transformMs)
+      res.setHeader(
+        'Server-Timing',
+        `locations;dur=${locationsMs}, reports;dur=${reportsMs}, transform;dur=${transformMs}`,
+      )
+      console.log(JSON.stringify({
+        level: 'info',
+        type: 'location_pins_timing',
+        requestId: res.getHeader('X-Request-Id'),
+        city,
+        locationsMs,
+        reportsMs,
+        transformMs,
+        locationCount: timing.locationCount,
+        reportCount: timing.reportCount,
+      }))
+    }
     sendPublicCachedJson(req, res, locations, {
       maxAge: 30,
       staleWhileRevalidate: 60,

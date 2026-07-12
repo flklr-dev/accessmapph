@@ -3,17 +3,23 @@ import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js'
 import { accountDeleteRateLimit, contributionsReadRateLimit, profileReadRateLimit } from '../middleware/rateLimit.js'
 import { enqueueAccountDeletion } from '../jobs/accountDelete.js'
 import { getJobStatus, jobOwnedBy } from '../lib/jobQueue.js'
-import { getUserContributions, toPublicUser } from '../services/userService.js'
+import { getUserContributions, getUserReportIds, toPublicUser } from '../services/userService.js'
 
 export const authRouter = Router()
 
 /** Current signed-in user profile (creates/syncs Mongo user on first call). */
-authRouter.get('/me', requireAuth, profileReadRateLimit, (req: AuthenticatedRequest, res) => {
+authRouter.get('/me', requireAuth, profileReadRateLimit, async (req: AuthenticatedRequest, res) => {
   if (!req.user) {
     res.status(401).json({ error: 'Sign in required.' })
     return
   }
-  res.json({ user: toPublicUser(req.user) })
+  const reportIds = req.auth?.uid
+    ? await getUserReportIds(req.auth.uid).catch((error) => {
+        console.error('Error fetching current user report IDs:', error)
+        return []
+      })
+    : []
+  res.json({ user: toPublicUser(req.user), reportIds })
 })
 
 /** Profile + contribution history for the signed-in user. */

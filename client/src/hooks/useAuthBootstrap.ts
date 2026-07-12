@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { onAuthStateChanged } from 'firebase/auth'
-import { fetchCurrentUser, fetchMyContributions } from '../api/auth'
+import { fetchCurrentUserState } from '../api/auth'
 import { setAuthSessionUser } from '../lib/authSession'
 import { getFirebaseAuth, isFirebaseConfigured } from '../lib/firebase'
 import { useAuthStore } from '../store/authStore'
@@ -34,15 +34,10 @@ export function useAuthBootstrap() {
       }
 
       try {
-        const [profile, contributionsResult] = await Promise.all([
-          fetchCurrentUser(),
-          fetchMyContributions().catch(() => null),
-        ])
+        const { user: profile, reportIds } = await fetchCurrentUserState()
         if (!cancelled) {
           setProfile(profile)
-          if (contributionsResult) {
-            setMyReportIds(contributionsResult.contributions.map((c) => c.id))
-          }
+          setMyReportIds(reportIds)
           runPendingAction()
         }
       } catch {

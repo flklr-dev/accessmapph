@@ -28,7 +28,9 @@ export function UserMenu({ variant = 'light' }: UserMenuProps) {
     return () => document.removeEventListener('pointerdown', onPointerDown)
   }, [open])
 
-  if (loading) {
+  // Firebase already provides the user's identity and avatar. Do not hide it
+  // while the slower API profile request loads points and contribution data.
+  if (loading && !firebaseUser) {
     return (
       <div
         className={cn(
@@ -78,7 +80,15 @@ export function UserMenu({ variant = 'light' }: UserMenuProps) {
         aria-haspopup="menu"
       >
         {photo ? (
-          <img src={photo} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+          <img
+            src={photo}
+            alt=""
+            width={40}
+            height={40}
+            fetchPriority="high"
+            className="w-full h-full object-cover"
+            referrerPolicy="no-referrer"
+          />
         ) : (
           <span
             className={cn(

@@ -3,7 +3,6 @@ import { fetchLocations } from '../api/locations'
 import {
   getCachedLocations,
   loadLocationsForSpace,
-  prefetchAllSpaces,
   setCachedLocations,
 } from '../lib/locationCache'
 import { useMapStore } from '../store/mapStore'
@@ -32,21 +31,6 @@ function devSeedFallback(space: MapSpace): Location[] {
 export function useLocations() {
   const setLocations = useMapStore((s) => s.setLocations)
   const activeSpace = useMapStore((s) => s.activeSpace)
-
-  useEffect(() => {
-    // In production, load the active space first; warm others after a short delay
-    // so we don't hammer a cold Render instance with 4 parallel requests.
-    if (import.meta.env.DEV) {
-      prefetchAllSpaces(fetchSpaceLocations)
-      return
-    }
-
-    const timer = window.setTimeout(() => {
-      prefetchAllSpaces(fetchSpaceLocations)
-    }, 2_500)
-
-    return () => window.clearTimeout(timer)
-  }, [])
 
   useEffect(() => {
     let cancelled = false

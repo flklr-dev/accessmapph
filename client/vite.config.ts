@@ -17,10 +17,13 @@ function injectApiCsp(apiBaseUrl: string | undefined) {
   return {
     name: 'inject-api-csp',
     transformIndexHtml(html: string) {
-      return html.replace(
-        "connect-src 'self'",
-        `connect-src 'self' ${origin}`,
-      )
+      return html
+        .replace("connect-src 'self'", `connect-src 'self' ${origin}`)
+        .replace(
+          '<!-- Performance: connect early to the origins the map/photos load from -->',
+          `<!-- Performance: connect early to the origins the map/photos load from -->
+    <link rel="preconnect" href="${origin}" crossorigin />`,
+        )
     },
   }
 }

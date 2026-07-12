@@ -57,23 +57,22 @@ app.use(errorHandler)
 async function start() {
   const host = '0.0.0.0'
 
-  await new Promise<void>((resolve) => {
-    app.listen(Number(PORT), host, () => {
-      console.log(`AccessMap PH API listening on ${host}:${PORT}`)
-      console.log('[startup] Health probes: GET /health, GET /api/health/live')
-      resolve()
-    })
-  })
-
   try {
     initFirebaseAdmin()
-    const redis = await initRedis()
+    const [redis] = await Promise.all([initRedis(), connectDB()])
     initSlidingWindowStore(redis)
     initGeocodeCache(redis)
     initAuthSessionCache(redis)
-    await connectDB()
     initJobWorkers()
     console.log('[startup] Firebase, MongoDB, Redis, and job workers ready')
+
+    await new Promise<void>((resolve) => {
+      app.listen(Number(PORT), host, () => {
+        console.log(`AccessMap PH API listening on ${host}:${PORT}`)
+        console.log('[startup] Health probes: GET /health, GET /api/health/live')
+        resolve()
+      })
+    })
   } catch (error) {
     logServerError('startup_failed', error)
     process.exit(1)

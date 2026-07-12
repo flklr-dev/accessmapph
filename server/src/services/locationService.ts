@@ -120,6 +120,15 @@ export interface ListLocationPinsOptions {
   /** west,south,east,north in WGS84 degrees */
   bbox?: { west: number; south: number; east: number; north: number }
   limit?: number
+  onTiming?: (timing: LocationPinQueryTiming) => void
+}
+
+export interface LocationPinQueryTiming {
+  locationsMs: number
+  reportsMs: number
+  transformMs: number
+  locationCount: number
+  reportCount: number
 }
 
 export interface LocationPinJSON {
@@ -170,6 +179,7 @@ export function parseBbox(value: unknown): ListLocationPinsOptions['bbox'] | nul
 export async function listLocationPins(
   options: ListLocationPinsOptions = {},
 ): Promise<LocationPinJSON[]> {
+  const startedAt = performance.now()
   const city = options.city ?? 'all'
   const limit = options.limit ?? DEFAULT_PIN_LIMIT
   const filter: Record<string, unknown> = {}
@@ -202,7 +212,17 @@ export async function listLocationPins(
     .limit(limit)
     .lean()
 
-  if (locations.length === 0) return []
+  const locationsLoadedAt = performance.now()
+  if (locations.length === 0) {
+    options.onTiming?.({
+      locationsMs: locationsLoadedAt - startedAt,
+      reportsMs: 0,
+      transformMs: 0,
+      locationCount: 0,
+      reportCount: 0,
+    })
+    return []
+  }
 
   const locationIds = locations.map((loc) => loc._id)
   const reports = await Report.find({ locationId: { $in: locationIds } })
@@ -210,6 +230,7 @@ export async function listLocationPins(
     .sort({ createdAt: -1 })
     .lean()
 
+  const reportsLoadedAt = performance.now()
   const byLocation = new Map<string, ReturnType<typeof toSlimReport>[]>()
   for (const r of reports) {
     const key = String(r.locationId)
@@ -218,7 +239,7 @@ export async function listLocationPins(
     byLocation.set(key, list)
   }
 
-  return locations.map((loc) => {
+  const pins = locations.map((loc) => {
     const locationId = loc._id.toString()
     return {
       id: locationId,
@@ -236,6 +257,15 @@ export async function listLocationPins(
       createdAt: loc.createdAt?.toISOString(),
     }
   })
+
+  options.onTiming?.({
+    locationsMs: locationsLoadedAt - startedAt,
+    reportsMs: reportsLoadedAt - locationsLoadedAt,
+    transformMs: performance.now() - reportsLoadedAt,
+    locationCount: locations.length,
+    reportCount: reports.length,
+  })
+  return pins
 }
 
 export async function searchLocationsByName(query: string, limit = 6) {

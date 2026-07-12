@@ -1,8 +1,17 @@
 import { apiFetch } from './http'
 import type { AppUser, UserContribution } from '../types/auth'
 
+export interface CurrentUserState {
+  user: AppUser
+  reportIds: string[]
+}
+
+export async function fetchCurrentUserState(): Promise<CurrentUserState> {
+  return apiFetch<CurrentUserState>('/api/auth/me', { auth: true })
+}
+
 export async function fetchCurrentUser(): Promise<AppUser> {
-  const data = await apiFetch<{ user: AppUser }>('/api/auth/me', { auth: true })
+  const data = await fetchCurrentUserState()
   return data.user
 }
 
