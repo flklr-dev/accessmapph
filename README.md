@@ -32,6 +32,7 @@ By integrating user contribution logs, geocoding resolvers, and a multi-tiered m
 ### 1. 🔍 Location Resolution & Deduplication Pipeline
 
 To prevent duplicate pins representing the same public venues, AccessMap PH runs a backend resolution pipeline when creating and matching locations:
+
 * **Place Key (OSM Nominatim)**: Automatically maps incoming coordinates against OpenStreetMap elements. If an OSM `placeKey` exists (e.g., `osm:way:123456`), users are linked to that canonical place entry regardless of minor tap offsets.
 * **Proximity Matching**: Falls back to Haversine distance calculations when OSM IDs are missing, flagging pins within a 75m radius:
   $$
@@ -43,6 +44,7 @@ To prevent duplicate pins representing the same public venues, AccessMap PH runs
 ### 2. 🛡️ Multi-Tiered Moderation & Trust Engine
 
 Submissions go through a three-stage validation pipeline to guarantee high-quality, spam-free accessibility ratings:
+
 * **Tier 1 (Rule Engine)**: Automates basic rules to screen out invalid text (e.g., descriptions under 8 characters, shouting caps, known nonsense strings, or identical submissions from the same user within 24 hours).
 * **Tier 2 (Trust Status)**: Users with a successful mapping track record ($\ge 3$ approved reports and $0$ flags) bypass public review queues; their reports go live instantly with an `approved` verdict.
 * **Tier 3 (Community Review)**: Reports from new contributors go live under a `pending` status. Members can vote to confirm or flag:
@@ -85,14 +87,14 @@ Submissions go through a three-stage validation pipeline to guarantee high-quali
 
 AccessMap PH is structured to track specific structural assets across public spaces:
 
-| Feature Type | DB Code | Primary Assessment Criteria |
-| :--- | :---: | :--- |
-| **Ramps** | `ramp` | Wheelchair ramps, slope gradient, handrails, anti-slip surface. |
+| Feature Type        |   DB Code   | Primary Assessment Criteria                                           |
+| :------------------ | :----------: | :-------------------------------------------------------------------- |
+| **Ramps**     |   `ramp`   | Wheelchair ramps, slope gradient, handrails, anti-slip surface.       |
 | **Elevators** | `elevator` | Accessible elevator buttons, braille tags, voice prompts, wide doors. |
-| **Restrooms** | `restroom` | Safety handrails, wide entry, low sink, emergency call buttons. |
-| **Parking** | `parking` | Designated PWD parking slots close to entry points. |
-| **Pathways** | `pathway` | Wide, unobstructed corridors and tactile guiding blocks. |
-| **Signage** | `signage` | High-contrast visual text and braille indicators. |
+| **Restrooms** | `restroom` | Safety handrails, wide entry, low sink, emergency call buttons.       |
+| **Parking**   | `parking` | Designated PWD parking slots close to entry points.                   |
+| **Pathways**  | `pathway` | Wide, unobstructed corridors and tactile guiding blocks.              |
+| **Signage**   | `signage` | High-contrast visual text and braille indicators.                     |
 
 ---
 
@@ -102,26 +104,26 @@ AccessMap PH follows a three-tier web application architecture. The browser clie
 
 ### 💻 Web Client — React + TypeScript
 
-| Layer | Technology | Purpose |
-| :--- | :--- | :--- |
-| Framework | React 19 · Vite 6 | High-performance component rendering |
-| Language | TypeScript 5.0+ | Type-safe front-end development |
-| State | Zustand v5 | Global client-side stores |
-| Styling | Tailwind CSS v4 | Responsive utility layouts |
-| Map Layer | Leaflet.js · React-Leaflet | Open-source map layer and vector rendering |
-| Icons | Lucide React | Modern vector indicator icons |
-| Auth Client | Firebase Client SDK | Login interfaces and session checks |
+| Layer       | Technology                  | Purpose                                    |
+| :---------- | :-------------------------- | :----------------------------------------- |
+| Framework   | React 19 · Vite 6          | High-performance component rendering       |
+| Language    | TypeScript 5.0+             | Type-safe front-end development            |
+| State       | Zustand v5                  | Global client-side stores                  |
+| Styling     | Tailwind CSS v4             | Responsive utility layouts                 |
+| Map Layer   | Leaflet.js · React-Leaflet | Open-source map layer and vector rendering |
+| Icons       | Lucide React                | Modern vector indicator icons              |
+| Auth Client | Firebase Client SDK         | Login interfaces and session checks        |
 
 ### ⚙️ Backend Server — Node.js + Express
 
-| Layer | Technology | Purpose |
-| :--- | :--- | :--- |
-| Framework | Node.js 20+ · Express 5 | Asynchronous server engine |
-| Database | MongoDB · Mongoose | Spatial document queries (`2dsphere` indexes) |
-| Caching | Redis | API rate-limiting and validation storage |
-| CDN Handler | Cloudinary SDK | Upload validation and CDN storage integration |
-| Security | Helmet · Cors | Response hardening and origin configuration |
-| Auth Admin | Firebase Admin SDK | Server-side JWT signature audits |
+| Layer       | Technology               | Purpose                                         |
+| :---------- | :----------------------- | :---------------------------------------------- |
+| Framework   | Node.js 20+ · Express 5 | Asynchronous server engine                      |
+| Database    | MongoDB · Mongoose      | Spatial document queries (`2dsphere` indexes) |
+| Caching     | Redis                    | API rate-limiting and validation storage        |
+| CDN Handler | Cloudinary SDK           | Upload validation and CDN storage integration   |
+| Security    | Helmet · Cors           | Response hardening and origin configuration     |
+| Auth Admin  | Firebase Admin SDK       | Server-side JWT signature audits                |
 
 ### 🔄 How It All Connects
 
@@ -171,14 +173,17 @@ AccessMap PH follows a three-tier web application architecture. The browser clie
 ### 1. Backend Server Setup
 
 1. Navigate to the `server/` directory:
+
    ```bash
    cd server
    ```
 2. Install server dependencies:
+
    ```bash
    npm install
    ```
 3. Create a `.env` file in the `server/` directory:
+
    ```env
    PORT=3001
    MONGODB_URI=mongodb://localhost:27017/accessmapph
@@ -196,6 +201,7 @@ AccessMap PH follows a three-tier web application architecture. The browser clie
    CLOUDINARY_API_SECRET=your_cloudinary_secret
    ```
 4. Start the development server:
+
    ```bash
    npm run dev
    ```
@@ -236,18 +242,21 @@ AccessMap PH follows a three-tier web application architecture. The browser clie
 
 ### Frontend (Vercel)
 
-The React web client can be built and deployed via Vercel. 
+The React web client can be built and deployed via Vercel.
 To build the distribution bundles locally:
+
 ```bash
 cd client
 npm run build
 ```
+
 Deploy the output `dist/` directory to your static web host.
 
 ### Backend (Render / Railway / Heroku)
 
 Deploy the Express server to a Node runtime environment. Set up the production variables matching `server/.env`.
 To run the production build:
+
 ```bash
 cd server
 npm run build
